@@ -1,8 +1,7 @@
 streamlit
-ccxt
-requests
-pandas
 yfinance
+pandas
 numpy
 matplotlib
-scipy
+ccxt
+requests
