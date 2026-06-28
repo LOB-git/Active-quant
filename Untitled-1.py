@@ -1025,10 +1025,13 @@ def scan_top_derivative_assets(timeframe='1h', flow_timeframe=None, volume_timef
         return market_caps
 
     exchange = ccxt.binance({'enableRateLimit': True, 'options': {'defaultType': 'swap'}})
+    # Use Bybit for derivatives as it has fewer geographical restrictions than Binance
+    exchange = ccxt.bybit({'enableRateLimit': True, 'options': {'defaultType': 'swap'}})
     try:
         tickers = exchange.fetch_tickers()
     except Exception as e:
         st.error(f"Could not fetch derivative tickers: {e}")
+        st.error(f"Could not fetch derivative tickers from {exchange.id}: {e}")
         return pd.DataFrame()
 
     swap_pairs = []
@@ -1050,6 +1053,7 @@ def scan_top_derivative_assets(timeframe='1h', flow_timeframe=None, volume_timef
         fr_data = exchange.fetch_funding_rates()
         for sym, d in fr_data.items():
             base_sym = sym.split(':')[0]
+            base_sym = sym.replace(':USDT', '') # Bybit uses 'BTC/USDT:USDT', Binance uses 'BTC/USDT'
             funding_rates[base_sym] = d.get('fundingRate', 0.0)
     except Exception:
         pass
@@ -1060,6 +1064,7 @@ def scan_top_derivative_assets(timeframe='1h', flow_timeframe=None, volume_timef
         oi_data = exchange.fetch_open_interests()
         for k, v in oi_data.items():
             base = k.split(':')[0]
+            base = k.replace(':USDT', '')
             oi_map[base] = v
     except Exception:
         oi_map = {}
@@ -1070,6 +1075,7 @@ def scan_top_derivative_assets(timeframe='1h', flow_timeframe=None, volume_timef
     def process_pair(pair_data):
         full_symbol, ticker = pair_data
         base_symbol = full_symbol.split(':')[0]
+        base_symbol = full_symbol.replace(':USDT', '')
         try:
             ohlcv = exchange.fetch_ohlcv(full_symbol, timeframe=timeframe, limit=100)
             if not ohlcv:
