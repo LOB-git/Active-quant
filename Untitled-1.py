@@ -219,6 +219,7 @@ def fetch_and_analyze(symbol='BTC/USDT', timeframe='1h', start_date=None, end_da
         df['tr2'] = (df['high'] - df['close'].shift(1)).abs()
         df['tr3'] = (df['low'] - df['close'].shift(1)).abs()
         df['tr'] = df[['tr1', 'tr2', 'tr3']].max(axis=1)
+        df['atr14'] = df['tr'].ewm(alpha=1/14, adjust=False).mean()
         
         df['up_move'] = df['high'] - df['high'].shift(1)
         df['down_move'] = df['low'].shift(1) - df['low']
@@ -251,6 +252,7 @@ def fetch_and_analyze(symbol='BTC/USDT', timeframe='1h', start_date=None, end_da
         df['ob_bull'] = df['ob_bull'].fillna(df['low'])
         df['ob_bear'] = df['ob_bear'].fillna(df['high'])
         df['adx'] = df['adx'].fillna(0)
+        df['atr14'] = df['atr14'].fillna(0)
         df['last_bull_fvg_top'] = df['last_bull_fvg_top'].fillna(0)
         df['last_bull_fvg_bottom'] = df['last_bull_fvg_bottom'].fillna(0)
         df['last_bear_fvg_top'] = df['last_bear_fvg_top'].fillna(10000000)
@@ -663,162 +665,212 @@ def backtest_strategy(df, symbol, start_hour=0, end_hour=24, rsi_lower=30, rsi_u
         "history": trade_history
     }
 
-def backtest_composite_derivative(symbol, timeframe='1h', flow_timeframe=None, start_date=None, end_date=None, lookback_days=30):
+def get_quantum_signal_for_candle(df_slice):
     """
-    Backtests composite derivative entry/exit signals on historical OHLCV data.
-    Uses all derivative strategies: MACD, ATR, MA20, money flow, volume ratio.
-    Supports date range or lookback period.
+    Calculates the quantum volatility signal for a given historical slice of data.
+    This is a non-plotting version of the logic in plot_volatility_surface.
     """
-    if flow_timeframe is None:
-        flow_timeframe = timeframe
-    
     try:
-        exchange = ccxt.binance({'enableRateLimit': True, 'options': {'defaultType': 'swap'}})
-        
-        # Determine limit based on timeframe and lookback period
-        timeframe_minutes = {'5m': 5, '15m': 15, '1h': 60, '4h': 240}
-        minutes = timeframe_minutes.get(timeframe, 60)
-        limit = max(300, int((lookback_days * 24 * 60) / minutes) + 50)
-        
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=min(limit, 1000))
-        
-        if not ohlcv:
-            return None
+        # This function requires at least 50 data points for rolling calculations
+        if len(df_slice) < 50:
+            return "CONSOLIDATE / CHOP"
+
+        # 1. Calculate volatility
+        df = df_slice.copy()
+        df['log_ret'] = np.log(df['close'] / df['close'].shift(1))
+        df['volatility'] = df['log_ret'].rolling(window=20).std() * np.sqrt(252) # Annualized
+        df.dropna(inplace=True)
+
+        if df['volatility'].empty or len(df) < 2:
+            return "CONSOLIDATE / CHOP"
+
+        # 2. Define a "wave function" psi
+        vol_series = df['volatility'].values
+        vol_change = df['volatility'].diff().fillna(0).values
+        psi = vol_series + 1j * vol_change
+        phase = np.angle(psi)
+
+        # 3. Get phase gradient to predict path
+        grad_x = 0
+        try:
+            all_points = np.vstack((vol_series, vol_change)).T
+            tree = cKDTree(all_points)
+            current_pos = np.array([vol_series[-1], vol_change[-1]])
+            distances, indices = tree.query(current_pos, k=min(10, len(all_points)))
             
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df['close'] = pd.to_numeric(df['close'], errors='coerce')
-        df['open'] = pd.to_numeric(df['open'], errors='coerce')
-        df['high'] = pd.to_numeric(df['high'], errors='coerce')
-        df['low'] = pd.to_numeric(df['low'], errors='coerce')
-        df['volume'] = pd.to_numeric(df['volume'], errors='coerce')
+            if len(indices) > 2:
+                neighbor_points = all_points[indices]
+                neighbor_phases = phase[indices]
+                A = np.c_[neighbor_points, np.ones(len(indices))]
+                gradient, _, _, _ = np.linalg.lstsq(A, neighbor_phases, rcond=None)
+                grad_x = gradient[0]
+        except Exception:
+            grad_x = 0
+
+        # --- Market Direction Prediction Logic ---
+        # 1. Volatility Prediction
+        vol_prediction = "NEUTRAL"
+        if grad_x > 0:
+            vol_prediction = "INCREASE"
+        elif grad_x < 0:
+            vol_prediction = "DECREASE"
+
+        # 2. Price Trend & Momentum
+        current_data = df.iloc[-1]
+        price_trend = "BULLISH" if current_data['close'] > current_data['ema_50'] else "BEARISH"
+        price_momentum = "POSITIVE" if current_data['rsi'] > 50 else "NEGATIVE"
+
+        # 3. Final Prediction Logic
+        final_prediction = "CONSOLIDATE / CHOP"
+        if "INCREASE" in vol_prediction:
+            if price_trend == "BULLISH" and price_momentum == "POSITIVE":
+                final_prediction = "MOVE UP"
+            elif price_trend == "BEARISH" and price_momentum == "NEGATIVE":
+                final_prediction = "MOVE DOWN"
         
-        # Filter by date range if provided
-        if start_date:
-            df = df[df['timestamp'] >= start_date]
-        if end_date:
-            df = df[df['timestamp'] <= end_date]
+        return final_prediction
+
+    except Exception as e:
+        # Return neutral signal if any error occurs during calculation
+        return "CONSOLIDATE / CHOP"
+
+def backtest_composite_derivative(df_full, symbol, risk_reward_ratio=None, **kwargs):
+    """
+    Backtests using the Volatility Quantum Analysis signal.
+    - Enters LONG on "MOVE UP" signal.
+    - Enters SHORT on "MOVE DOWN" signal.
+    - Exits any position on "CONSOLIDATE / CHOP" signal.
+    - Also exits on stop-loss (1.5 * ATR) or take-profit (stop_loss_distance * R:R ratio).
+    """
+    if df_full is None or df_full.empty or len(df_full) < 100:
+        st.warning("Not enough data for a meaningful backtest (requires at least 100 candles).")
+        return None
+
+    initial_balance = 10000
+    balance = initial_balance
+    position = None # None, 'LONG', 'SHORT'
+    entry_price = 0
+    entry_date = None
+    stop_loss_price = 0
+    take_profit_price = 0
+    trades = []
+    trade_history = []
+    peak_balance = initial_balance
+    max_drawdown = 0
+    
+    # Start backtest after a warmup period for indicators
+    warmup_period = 50
+    
+    # Iterate through history
+    progress_bar = st.progress(0)
+    total_steps = len(df_full) - warmup_period - 1
+    for i in range(warmup_period, len(df_full) - 1):
+        # For each step, we use all historical data up to that point to make a decision
+        df_slice = df_full.iloc[:i+1]
         
-        if len(df) < 60:
-            st.error("Not enough data in selected date range.")
-            return None
+        # Get the signal for the current candle
+        signal = get_quantum_signal_for_candle(df_slice)
         
-        # Calculate all indicators
-        df['ma20'] = df['close'].rolling(window=20).mean()
-        ema12 = df['close'].ewm(span=12, adjust=False).mean()
-        ema26 = df['close'].ewm(span=26, adjust=False).mean()
-        macd = ema12 - ema26
-        signal = macd.ewm(span=9, adjust=False).mean()
-        df['macd_hist'] = macd - signal
+        # We execute trades at the OPEN of the next candle
+        next_open = df_full.iloc[i+1]['open']
+        candle_high = df_full.iloc[i+1]['high']
+        candle_low = df_full.iloc[i+1]['low']
         
-        prev_close = df['close'].shift(1)
-        tr1 = df['high'] - df['low']
-        tr2 = (df['high'] - prev_close).abs()
-        tr3 = (df['low'] - prev_close).abs()
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        df['atr14'] = tr.rolling(window=14).mean()
+        # --- Stop-Loss & Take-Profit Logic ---
+        if position == 'LONG':
+            # Check for stop-loss or take-profit hit during the candle's lifetime
+            if candle_low <= stop_loss_price:
+                pnl = (stop_loss_price - entry_price) / entry_price
+                balance *= (1 + pnl)
+                trades.append(pnl)
+                trade_history.append({'entry_date': entry_date, 'entry_price': entry_price, 'exit_date': df_full.index[i+1], 'exit_price': stop_loss_price, 'type': 'LONG', 'pnl': pnl, 'exit_reason': 'Stop-Loss'})
+                position = None
+            elif risk_reward_ratio and candle_high >= take_profit_price:
+                pnl = (take_profit_price - entry_price) / entry_price
+                balance *= (1 + pnl)
+                trades.append(pnl)
+                trade_history.append({'entry_date': entry_date, 'entry_price': entry_price, 'exit_date': df_full.index[i+1], 'exit_price': take_profit_price, 'type': 'LONG', 'pnl': pnl, 'exit_reason': 'Take-Profit'})
+                position = None
+        elif position == 'SHORT':
+            if candle_high >= stop_loss_price:
+                pnl = (entry_price - stop_loss_price) / entry_price
+                balance *= (1 + pnl)
+                trades.append(pnl)
+                trade_history.append({'entry_date': entry_date, 'entry_price': entry_price, 'exit_date': df_full.index[i+1], 'exit_price': stop_loss_price, 'type': 'SHORT', 'pnl': pnl, 'exit_reason': 'Stop-Loss'})
+                position = None
+            elif risk_reward_ratio and candle_low <= take_profit_price:
+                pnl = (entry_price - take_profit_price) / entry_price
+                balance *= (1 + pnl)
+                trades.append(pnl)
+                trade_history.append({'entry_date': entry_date, 'entry_price': entry_price, 'exit_date': df_full.index[i+1], 'exit_price': take_profit_price, 'type': 'SHORT', 'pnl': pnl, 'exit_reason': 'Take-Profit'})
+                position = None
         
-        # RSI (14)
-        delta = df['close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / (loss + 1e-9)
-        df['rsi'] = 100 - (100 / (1 + rs))
-        
-        # Money flow signal
-        df['is_up'] = df['close'] >= df['open']
-        df['money_flow_vol'] = df.loc[df['is_up'], 'volume'].rolling(window=14).sum()
-        df['money_flow_vol'] = df['money_flow_vol'].fillna(0)
-        df['counter_flow_vol'] = df.loc[~df['is_up'], 'volume'].rolling(window=14).sum()
-        df['counter_flow_vol'] = df['counter_flow_vol'].fillna(0)
-        df['net_flow'] = df['money_flow_vol'] - df['counter_flow_vol']
-        df['total_flow'] = df['money_flow_vol'] + df['counter_flow_vol']
-        df['money_flow_signal'] = df['net_flow'] / (df['total_flow'] + 1e-9)
-        
-        # Volume ratio
-        df['vol_ma20'] = df['volume'].rolling(window=20).mean()
-        df['vol_ratio'] = df['volume'] / (df['vol_ma20'] + 1e-9)
-        
-        # Generate signals
-        initial_balance = 10000
-        balance = initial_balance
-        position = None
-        entry_price = 0
-        entry_date = None
-        trades = []
-        trade_history = []
-        peak_balance = initial_balance
-        max_drawdown = 0
-        
-        for i in range(50, len(df) - 1):
-            current = df.iloc[i]
-            next_row = df.iloc[i + 1]
-            
-            # Entry conditions
-            price = float(current['close'])
-            ma20 = float(current['ma20']) if not pd.isna(current['ma20']) else price
-            macd_hist = float(current['macd_hist']) if not pd.isna(current['macd_hist']) else 0
-            atr = float(current['atr14']) if not pd.isna(current['atr14']) and float(current['atr14']) > 0 else 1.0
-            rsi = float(current['rsi']) if not pd.isna(current['rsi']) else 50.0
-            money_flow_sig = float(current['money_flow_signal']) if not pd.isna(current['money_flow_signal']) else 0
-            vol_ratio = float(current['vol_ratio']) if not pd.isna(current['vol_ratio']) else 1.0
-            
-            # Normalized composite entry logic
-            normalized_macd = np.tanh(macd_hist / (atr + 1e-9))
-            normalized_rsi = (rsi - 50.0) / 50.0
-            flow_score = money_flow_sig
-            vol_strength = min(vol_ratio, 2.0) / 2.0
-            
-            entry_score = (0.4 * normalized_macd) + (0.3 * normalized_rsi) + (0.2 * flow_score) + (0.1 * vol_strength)
-            trend_ok = price > ma20
-            
-            buy_signal = entry_score > 0.25 and trend_ok
-            sell_signal = entry_score < 0.1 or not trend_ok
-            
-            # Position management
-            if position is None and buy_signal:
-                position = 'LONG'
-                entry_price = float(next_row['open'])
-                entry_date = i + 1
-            elif position == 'LONG' and sell_signal:
-                pnl = (float(next_row['open']) - entry_price) / entry_price
+        # --- Exit Logic ---
+        if position and signal == "CONSOLIDATE / CHOP":
+            if position == 'LONG':
+                pnl = (next_open - entry_price) / entry_price
                 balance *= (1 + pnl)
                 trades.append(pnl)
                 trade_history.append({
-                    'entry': entry_date,
-                    'exit': i + 1,
-                    'price_entry': entry_price,
-                    'price_exit': float(next_row['open']),
-                    'pnl': pnl
+                    'entry_date': entry_date, 'entry_price': entry_price,
+                    'exit_date': df_full.index[i+1], 'exit_price': next_open,
+                    'type': 'LONG', 'pnl': pnl, 'exit_reason': 'Consolidate Signal'
                 })
                 position = None
+            elif position == 'SHORT':
+                pnl = (entry_price - next_open) / entry_price
+                balance *= (1 + pnl)
+                trades.append(pnl)
+                trade_history.append({
+                    'entry_date': entry_date, 'entry_price': entry_price,
+                    'exit_date': df_full.index[i+1], 'exit_price': next_open,
+                    'type': 'SHORT', 'pnl': pnl, 'exit_reason': 'Consolidate Signal'
+                })
+                position = None
+        
+        # --- Entry Logic ---
+        if position is None:
+            if signal == "MOVE UP":
+                position = 'LONG'
+                entry_price = next_open
+                entry_date = df_full.index[i+1]
+                atr_val = df_full.iloc[i]['atr14']
+                stop_loss_price = entry_price - (atr_val * 1.5)
+                if risk_reward_ratio:
+                    risk_distance = entry_price - stop_loss_price
+                    take_profit_price = entry_price + (risk_distance * risk_reward_ratio)
+            elif signal == "MOVE DOWN":
+                position = 'SHORT'
+                entry_price = next_open
+                entry_date = df_full.index[i+1]
+                atr_val = df_full.iloc[i]['atr14']
+                stop_loss_price = entry_price + (atr_val * 1.5)
+                if risk_reward_ratio:
+                    risk_distance = stop_loss_price - entry_price
+                    take_profit_price = entry_price - (risk_distance * risk_reward_ratio)
+
+        # Track Drawdown
+        if balance > peak_balance:
+            peak_balance = balance
+        drawdown = (peak_balance - balance) / peak_balance
+        if drawdown > max_drawdown:
+            max_drawdown = drawdown
             
-            # Track drawdown
-            if balance > peak_balance:
-                peak_balance = balance
-            drawdown = ((peak_balance - balance) / peak_balance) * 100
-            if drawdown > max_drawdown:
-                max_drawdown = drawdown
-        
-        # Final stats
-        roi = ((balance - initial_balance) / initial_balance) * 100
-        win_rate = (len([t for t in trades if t > 0]) / len(trades) * 100) if trades else 0
-        gross_profit = sum([t for t in trades if t > 0])
-        gross_loss = abs(sum([t for t in trades if t < 0]))
-        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else 0
-        
-        return {
-            "final_balance": balance,
-            "roi": roi,
-            "total_trades": len(trades),
-            "win_rate": win_rate,
-            "profit_factor": profit_factor,
-            "max_drawdown": max_drawdown,
-            "trade_history": trade_history
-        }
-    except Exception as e:
-        st.error(f"Backtest error: {e}")
-        return None
+        progress_bar.progress((i - warmup_period) / total_steps)
+
+    # Final PnL & Stats
+    roi = ((balance - initial_balance) / initial_balance) * 100
+    win_rate = (len([t for t in trades if t > 0]) / len(trades) * 100) if trades else 0
+    gross_profit = sum([t for t in trades if t > 0])
+    gross_loss = abs(sum([t for t in trades if t < 0]))
+    profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else 0
+    
+    return {
+        "final_balance": balance, "roi": roi, "total_trades": len(trades),
+        "win_rate": win_rate, "profit_factor": profit_factor,
+        "max_drawdown": max_drawdown * 100, "trade_history": trade_history,
+        "rr_ratio": risk_reward_ratio if risk_reward_ratio else "None"
+    }
 
 def scan_and_rank_crypto():
     """
@@ -1054,12 +1106,18 @@ def scan_top_derivative_assets(timeframe='1h', flow_timeframe=None, volume_timef
             df['atr14'] = tr.rolling(window=14).mean()
             
             # RSI (14)
+            if df.empty: # Add a check here
+                return None
             delta = df['close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
             rs = gain / (loss + 1e-9)
             df['rsi'] = 100 - (100 / (1 + rs))
             
+            # Add EMA50 for quantum prediction function
+            df['ema_50'] = df['close'].ewm(span=50, adjust=False).mean()
+            df.dropna(inplace=True) # Drop NaNs from indicators before quantum analysis
+
             df['ma20'] = df['close'].rolling(window=20).mean()
 
             try:
@@ -1185,6 +1243,7 @@ def scan_top_derivative_assets(timeframe='1h', flow_timeframe=None, volume_timef
                 liquidity_ratio = 0.0
 
             return {
+                'quantum_verdict': get_quantum_signal_for_candle(df),
                 'symbol': base_symbol,
                 'price': current['close'],
                 'momentum': current['momentum'],
@@ -1205,7 +1264,9 @@ def scan_top_derivative_assets(timeframe='1h', flow_timeframe=None, volume_timef
                 'outflow': outflow,
                 'net_flow': net_flow,
                 'entry_score': entry_score,
-                'entry_signal': entry_signal
+                'entry_signal': entry_signal,
+                'vol_ratio': vol_ratio,
+                'atr14': float(current['atr14']) if not pd.isna(current['atr14']) else 0.0
             }
         except Exception:
             return None
@@ -1346,6 +1407,7 @@ def plot_volatility_surface(df, symbol):
         # 4. Draw the gradient vector as an arrow on the plot
         arrow_length_factor = 0.1 # Adjust to make arrow longer/shorter
         ax1.quiver(x[-1], y[-1], z[-1], grad_x, grad_y, 0, length=arrow_length_factor, normalize=True, color='magenta', linewidth=3, label='Predicted Path')
+        ax1.legend() # Add legend again to include the quiver plot label
         
         # Store data for price prediction
         price_prediction_data['vol_grad_x'] = grad_x
@@ -1403,7 +1465,7 @@ def main():
     tg_chat_id = st.sidebar.text_input("Telegram Chat ID")
 
     # Tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📊 Market Overview", "⚡ Top Crypto Ranking", "🔥 Derivatives Trend Scan", "🛠️ Backtest Engine", "🏛️ US Indices", "🎯 Composite Derivative Backtest", "🌌 Volatility Quantum Analysis"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["📊 Market Overview", "⚡ Top Crypto Ranking", "🔥 Derivatives Trend Scan", "🛠️ Backtest Engine", "🏛️ US Indices", "🎯 Composite Derivative Backtest", "🌌 Volatility Quantum Analysis", "🇬🇧 GBP/USD Quantum Backtest"])
 
     with tab1:
         st.subheader(f"Live Analysis: {symbol}")
@@ -1531,10 +1593,15 @@ def main():
         flow_timeframe = st.selectbox("Inflow/Outflow timeframe", ["5m", "15m", "1h", "4h"], index=2)
         volume_timeframe = st.selectbox("Short-term volume timeframe", ["5m", "15m", "1h", "4h"], index=2)
 
+        # Initialize session state to hold the dataframe from the scan
+        if 'df_deriv' not in st.session_state:
+            st.session_state.df_deriv = pd.DataFrame()
+
         if st.button("Scan Top Derivatives"):
             with st.spinner("Scanning top derivative assets..."):
                 df_deriv = scan_top_derivative_assets(timeframe=timeframe_deriv, flow_timeframe=flow_timeframe, volume_timeframe=volume_timeframe, top_n=100)
                 if df_deriv is not None and not df_deriv.empty:
+                    # Store the results in session state to persist them
                     df_deriv['momentum'] = df_deriv['momentum'].fillna(0)
                     df_deriv['z_score'] = df_deriv['z_score'].fillna(0)
                     df_deriv['funding_rate'] = df_deriv['funding_rate'].fillna(0)
@@ -1548,45 +1615,153 @@ def main():
                         df_deriv['rsi_15m'] = 50.0
                     df_deriv['rsi_15m'] = df_deriv['rsi_15m'].fillna(50)
                     df_deriv['entry_score'] = df_deriv.get('entry_score', 0).fillna(0)
-                    df_deriv['entry_signal'] = df_deriv.get('entry_signal', '').fillna('')
-                    st.caption("TPS = (0.4 × Z-score Signal) + (0.3 × Money Flow Signal) + (0.3 × Funding Signal)")
-                    styler = df_deriv.style.format({
-                        "price": "${:.2f}",
-                        "momentum": "{:.2%}",
-                        "z_score": "{:.2f}",
-                        "funding_rate": "{:.4%}",
-                        "funding_signal": "{:.2f}",
-                        "money_flow_signal": "{:.2f}",
-                        "tps": "{:.2f}",
-                        "liquidity_ratio": "{:.6f}",
-                        "rsi_15m": "{:.2f}",
-                        "entry_score": "{:.3f}",
-                        "entry_signal": "{}",
-                        "open_interest": format_large_number,
-                        "24h_volume": format_large_number,
-                        "inflow": format_large_number,
-                        "outflow": format_large_number,
-                        "net_flow": format_large_number
-                    })
-                    if hasattr(styler, 'map'):
-                        styler = styler.map(color_metrics, subset=['momentum', 'z_score', 'money_flow_signal', 'funding_signal', 'tps', 'liquidity_ratio', 'net_flow', 'rsi_15m', 'entry_score'])
-                    else:
-                        styler = styler.applymap(color_metrics, subset=['momentum', 'z_score', 'money_flow_signal', 'funding_signal', 'tps', 'liquidity_ratio', 'net_flow', 'rsi_15m', 'entry_score'])
-                    st.dataframe(styler, width='stretch')
-                    # Top-10 upside candidates by TPS with Z-score
-                    try:
-                        top10 = df_deriv.sort_values(by='tps', ascending=False).head(10).reset_index(drop=True)
-                        if not top10.empty:
-                            st.subheader("Top 10 Upside Candidates (by TPS)")
-                            st.write("Bars = TPS (higher = more probable upside). Line = Z-score.")
-                            top10_plot = top10.set_index('symbol')
-                            st.bar_chart(top10_plot['tps'])
-                            st.line_chart(top10_plot['z_score'])
-                    except Exception as e:
-                        st.warning(f"Could not render top-10 chart: {e}")
+                    df_deriv['entry_signal'] = df_deriv.get('entry_signal', '').fillna('')                    
+                    st.session_state.df_deriv = df_deriv
                 else:
                     st.warning("No derivative asset data returned. Try again in a moment.")
 
+        # --- Display and Analysis Section (runs if data exists in session state) ---
+        if not st.session_state.df_deriv.empty:
+            df_deriv = st.session_state.df_deriv.copy() # Work with a copy
+
+            # --- Calculate Quant Composite Strength Score (QS) ---
+            # Calculate Z-scores for each component across the universe of scanned assets
+            df_deriv['z_momentum'] = (df_deriv['momentum'] - df_deriv['momentum'].mean()) / df_deriv['momentum'].std()
+            df_deriv['z_flow'] = (df_deriv['money_flow_signal'] - df_deriv['money_flow_signal'].mean()) / df_deriv['money_flow_signal'].std()
+            df_deriv['z_volume'] = (df_deriv['vol_ratio'] - df_deriv['vol_ratio'].mean()) / df_deriv['vol_ratio'].std()
+            df_deriv['z_volatility'] = (df_deriv['atr14'] - df_deriv['atr14'].mean()) / df_deriv['atr14'].std()
+            df_deriv['z_trend'] = (df_deriv['z_score'] - df_deriv['z_score'].mean()) / df_deriv['z_score'].std() # Z-score of the Z-score
+
+            # Apply the QS formula
+            df_deriv['qs_score'] = (
+                0.35 * df_deriv['z_momentum'] +
+                0.25 * df_deriv['z_flow'] +
+                0.20 * df_deriv['z_volume'] -
+                0.10 * df_deriv['z_volatility'] +
+                0.10 * df_deriv['z_trend']
+            )
+
+            # Calculate QS relative to BTC
+            btc_qs = df_deriv[df_deriv['symbol'] == 'BTC/USDT']['qs_score'].iloc[0] if 'BTC/USDT' in df_deriv['symbol'].values else 0
+            df_deriv['qs_rel_btc'] = df_deriv['qs_score'] - btc_qs
+
+            # Sort by the new QS score
+            df_deriv.sort_values(by='qs_score', ascending=False, inplace=True)
+
+            # --- Calculate "Pump Potential" Score (User Request) ---
+            # Criteria: High Z-Flow, High Z-Volume, and Low RSI.
+            # We will use rsi_15m for a faster-reacting momentum component.
+            # We create a "low_rsi_score" that is higher when RSI is lower.
+            # An RSI of 20 gets a high score, an RSI of 80 gets a low score.
+            df_deriv['low_rsi_score'] = (50 - df_deriv['rsi_15m']) / 50.0 # Scale to ~ -0.6 to +0.6
+
+            df_deriv['pump_score'] = (
+                (0.4 * df_deriv['z_flow']) +
+                (0.4 * df_deriv['z_volume']) +
+                (0.2 * df_deriv['low_rsi_score'])
+            ).fillna(0)
+
+            df_deriv.sort_values(by='qs_score', ascending=False, inplace=True)
+
+            st.caption("TPS = (0.4 × Z-score Signal) + (0.3 × Money Flow Signal) + (0.3 × Funding Signal)")
+            styler = df_deriv.style.format({
+                "qs_score": "{:.2f}",
+                "qs_rel_btc": "{:+.2f}",
+                "quantum_verdict": "{}",
+                "pump_score": "{:.2f}",
+                "price": "${:.2f}",
+                "momentum": "{:.2%}",
+                "z_score": "{:.2f}",
+                "funding_rate": "{:.4%}",
+                "funding_signal": "{:.2f}",
+                "money_flow_signal": "{:.2f}",
+                "tps": "{:.2f}",
+                "liquidity_ratio": "{:.6f}",
+                "rsi_15m": "{:.2f}",
+                "entry_score": "{:.3f}",
+                "entry_signal": "{}",
+                "open_interest": format_large_number,
+                "24h_volume": format_large_number,
+                "inflow": format_large_number,
+                "outflow": format_large_number,
+                "net_flow": format_large_number
+            })
+
+            def color_qs(val):
+                if val > 2: return 'background-color: #0a8a0a; color: white' # Very Strong
+                if val > 1: return 'background-color: #90ee90' # Strong
+                if val < -2: return 'background-color: #a52a2a; color: white' # Very Weak
+                if val < -1: return 'background-color: #f08080' # Weak
+                return ''
+
+            if hasattr(styler, 'map'):
+                styler = styler.map(color_metrics, subset=['momentum', 'z_score', 'money_flow_signal', 'funding_signal', 'tps', 'liquidity_ratio', 'net_flow', 'rsi_15m', 'entry_score', 'quantum_verdict', 'qs_rel_btc', 'pump_score'])
+                styler = styler.apply(lambda x: [color_qs(v) for v in x], subset=['qs_score'])
+            else:
+                styler = styler.applymap(color_metrics, subset=['momentum', 'z_score', 'money_flow_signal', 'funding_signal', 'tps', 'liquidity_ratio', 'net_flow', 'rsi_15m', 'entry_score', 'quantum_verdict', 'qs_rel_btc', 'pump_score'])
+                styler = styler.apply(lambda x: [color_qs(v) for v in x], subset=['qs_score'])
+            st.dataframe(styler, width='stretch')
+
+            # --- Display Top 10 Pump Score Assets ---
+            st.subheader("🚀 Top 10 Pump Score Candidates")
+            st.write("These assets have the best combination of high relative money flow (Z-Flow), high relative volume (Z-Volume), and low RSI (room to grow).")
+            top_10_pump = df_deriv.sort_values(by='pump_score', ascending=False).head(10)
+            st.dataframe(top_10_pump[['symbol', 'pump_score', 'z_flow', 'z_volume', 'rsi_15m']].style.format(
+                {'pump_score': '{:.2f}', 'z_flow': '{:.2f}', 'z_volume': '{:.2f}', 'rsi_15m': '{:.1f}'}
+            ).background_gradient(subset=['pump_score', 'z_flow', 'z_volume'], cmap='Greens'))
+
+            # Top-10 upside candidates by TPS with Z-score
+            try:
+                top10 = df_deriv.sort_values(by='tps', ascending=False).head(10).reset_index(drop=True)
+                if not top10.empty:
+                    st.subheader("Top 10 Upside Candidates (by TPS)")
+                    st.write("Bars = TPS (higher = more probable upside). Line = Z-score.")
+                    top10_plot = top10.set_index('symbol')
+                    st.bar_chart(top10_plot['tps'])
+                    st.line_chart(top10_plot['z_score'])
+            except Exception as e:
+                st.warning(f"Could not render top-10 chart: {e}")
+
+            # --- Volatility Quantum Analysis Section ---
+            st.divider()
+            st.subheader("🌌 Volatility Quantum Analysis for Scanned Asset")
+            st.info("Select an asset from the scan results above to perform a deep-dive volatility analysis.")
+
+            col_q1, col_q2 = st.columns([1, 1])
+            with col_q1:
+                # Create a list of symbols from the scan results
+                scanned_symbols = df_deriv['symbol'].tolist()
+                # Add other relevant symbols that might not be in the top derivatives list
+                for sym in ['SPY', 'QQQ', '^VIX', 'GBPUSD=X']:
+                    if sym not in scanned_symbols:
+                        scanned_symbols.append(sym)
+                
+                quantum_symbol_deriv = st.selectbox("Select Asset for Analysis", options=scanned_symbols, key="quantum_sym_deriv")
+            with col_q2:
+                quantum_timeframe_deriv = st.selectbox("Select Timeframe", ["15m", "1h", "4h"], index=1, key="quantum_tf_deriv")
+
+            if st.button(f"Generate Volatility Surface for {quantum_symbol_deriv}", key="gen_surface_deriv"):
+                with st.spinner(f"Performing quantum analysis on {quantum_symbol_deriv}..."):
+                    # Fetch maximum available data for the surface instead of a fixed 1-year lookback.
+                    # This allows analysis on newer assets with less history.
+                    df_quantum = fetch_and_analyze(quantum_symbol_deriv, timeframe=quantum_timeframe_deriv, start_date=None, silent=True)
+
+                    if df_quantum is not None and not df_quantum.empty:
+                        fig, prediction_data = plot_volatility_surface(df_quantum, quantum_symbol_deriv)
+                        if fig:
+                            st.pyplot(fig)
+                            
+                            # Market Direction Prediction Logic
+                            vol_prediction = "NEUTRAL"
+                            if prediction_data.get('vol_grad_x', 0) > 0:
+                                vol_prediction = "INCREASE (Breakout/Trend Likely)"
+                            elif prediction_data.get('vol_grad_x', 0) < 0:
+                                vol_prediction = "DECREASE (Consolidation Likely)"
+
+                            st.info(f"**Final Prediction:** The analysis suggests the market is most likely to **{get_quantum_signal_for_candle(df_quantum)}**.")
+                    else:
+                        st.warning(f"Could not generate volatility surface for {quantum_symbol_deriv}. Not enough data available.")
+            
     with tab4:
         st.subheader(f"Strategy Backtest: {symbol}")
         if st.button("Run Backtest"):
@@ -1798,10 +1973,12 @@ def main():
         st.write("Backtest all composite derivative entry/exit signals: MACD, ATR, MA20, money flow, and volume ratio.")
         
         # Asset selection for backtest
-        deriv_symbol = st.text_input("Enter swap pair (e.g., BTC/USDT:USDT)", value="BTC/USDT:USDT")
+        deriv_symbol = st.text_input("Enter symbol (e.g., BTC/USDT or SPY)", value="BTC/USDT")
         
         col1, col2, col3 = st.columns(3)
         with col1:
+            rr_ratios = st.multiselect("Take Profit R:R Ratios", options=[1.0, 1.5, 2.0, 2.5, 3.0], default=[1.5, 2.0])
+        with col2:
             backtest_timeframe = st.selectbox("Backtest timeframe", ["5m", "15m", "1h", "4h"], index=2, key="bt_tf")
         with col2:
             backtest_flow_timeframe = st.selectbox("Flow timeframe", ["5m", "15m", "1h", "4h"], index=2, key="bt_flow_tf")
@@ -1822,57 +1999,45 @@ def main():
         
         if st.button("Run Composite Derivative Backtest"):
             if deriv_symbol.strip():
-                with st.spinner(f"Running backtest for {deriv_symbol}..."):
-                    # Convert dates to datetime if using custom range
-                    if lookback_option == "Custom Range":
-                        start_date_param = pd.Timestamp(start_date_param) if start_date_param else None
-                        end_date_param = pd.Timestamp(end_date_param) if end_date_param else None
-                    else:
-                        start_date_param = None
-                        end_date_param = None
+                with st.spinner(f"Fetching data for {deriv_symbol}..."):
+                    start_date_str = None
+                    if lookback_option == "Last N Days":
+                        start_date_str = (datetime.now() - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
+                    elif start_date_param:
+                        start_date_str = start_date_param.strftime('%Y-%m-%d')
+                
+                    # Fetch all necessary data for the backtest period
+                    df_backtest = fetch_and_analyze(symbol=deriv_symbol, timeframe=backtest_timeframe, start_date=start_date_str)
+                
+                if df_backtest is not None and not df_backtest.empty:
+                    all_stats = []
+                    # Also run a baseline without take-profit
+                    ratios_to_run = [None] + rr_ratios
+                    with st.spinner(f"Running {len(ratios_to_run)} backtest simulations..."):
+                        for ratio in ratios_to_run:
+                            stats = backtest_composite_derivative(df_backtest, deriv_symbol, risk_reward_ratio=ratio)
+                            if stats:
+                                all_stats.append(stats)
                     
-                    stats = backtest_composite_derivative(
-                        deriv_symbol, 
-                        timeframe=backtest_timeframe, 
-                        flow_timeframe=backtest_flow_timeframe,
-                        start_date=start_date_param,
-                        end_date=end_date_param,
-                        lookback_days=lookback_days
-                    )
-                    
-                    if stats:
-                        # Display metrics
-                        m1, m2, m3, m4, m5 = st.columns(5)
-                        m1.metric("Final Balance", f"${stats['final_balance']:.2f}")
-                        m2.metric("ROI", f"{stats['roi']:.2f}%")
-                        m3.metric("Total Trades", int(stats['total_trades']))
-                        m4.metric("Win Rate", f"{stats['win_rate']:.1f}%")
-                        m5.metric("Profit Factor", f"{stats['profit_factor']:.2f}")
-                        
-                        m6, m7 = st.columns(2)
-                        m6.metric("Max Drawdown", f"{stats['max_drawdown']:.2f}%")
-                        
-                        st.divider()
-                        st.subheader("Trade History")
-                        if stats['trade_history']:
-                            trade_df = pd.DataFrame(stats['trade_history'])
-                            trade_df['pnl_pct'] = trade_df['pnl'] * 100
-                            styler = trade_df.style.format({
-                                'price_entry': '${:.2f}',
-                                'price_exit': '${:.2f}',
-                                'pnl_pct': '{:.2f}%'
-                            })
-                            if hasattr(styler, 'map'):
-                                styler = styler.map(color_metrics, subset=['pnl_pct'])
-                            else:
-                                styler = styler.applymap(color_metrics, subset=['pnl_pct'])
-                            st.dataframe(styler, width='stretch')
-                        else:
-                            st.warning("No trades generated during backtest period.")
+                    if all_stats:
+                        st.subheader("Backtest Results by R:R Ratio")
+                        results_df = pd.DataFrame(all_stats)
+                        results_df = results_df.set_index('rr_ratio')
+                        display_cols = ['roi', 'total_trades', 'win_rate', 'profit_factor', 'max_drawdown', 'final_balance']
+                        styler = results_df[display_cols].style.format({
+                            'roi': '{:.2f}%',
+                            'win_rate': '{:.1f}%',
+                            'profit_factor': '{:.2f}',
+                            'max_drawdown': '{:.2f}%',
+                            'final_balance': '${:,.2f}'
+                        }).background_gradient(subset=['roi', 'profit_factor'], cmap='viridis')
+                        st.dataframe(styler, width='stretch')
                     else:
-                        st.error(f"Could not run backtest for {deriv_symbol}. Check symbol format and try again.")
+                        st.error("Backtest simulations failed to produce results.")
+                else:
+                    st.error(f"Could not run backtest for {deriv_symbol}. Check symbol format and data availability.")
             else:
-                st.warning("Please enter a valid swap pair (e.g., BTC/USDT:USDT).")
+                st.warning("Please enter a valid symbol.")
 
     with tab7:
         st.subheader("🌌 Volatility Quantum Analysis")
@@ -1920,7 +2085,7 @@ def main():
                     final_prediction = "CONSOLIDATE / CHOP"
                     if "INCREASE" in vol_prediction:
                         if price_trend == "BULLISH" and price_momentum == "POSITIVE":
-                            final_prediction = "MOVE UP ⬆️"
+                            final_prediction = "MOVE UP"
                         elif price_trend == "BEARISH" and price_momentum == "NEGATIVE":
                             final_prediction = "MOVE DOWN ⬇️"
                     
@@ -1935,6 +2100,66 @@ def main():
             if auto_refresh_quantum:
                 time.sleep(301) # Wait 5 minutes
                 st.rerun()
+
+    with tab8:
+        st.subheader("🇬🇧 GBP/USD Volatility Quantum Backtest")
+        st.write("This backtest uses the Volatility Quantum Analysis strategy specifically for the GBP/USD forex pair.")
+        st.info("A trade is opened on a 'MOVE UP' or 'MOVE DOWN' signal and closed when the signal returns to 'CONSOLIDATE / CHOP'.")
+
+        gbp_symbol = "GBPUSD=X"
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            gbp_backtest_timeframe = st.selectbox("Backtest timeframe", ["15m", "1h", "4h"], index=1, key="gbp_bt_tf")
+        with col2:
+            gbp_lookback_option = st.radio("Date Range", ["Last N Days", "Custom Range"], index=0, key="gbp_lookback_option")
+
+        if gbp_lookback_option == "Last N Days":
+            gbp_lookback_days = st.slider("Lookback days", min_value=7, max_value=730, value=90, step=1, key="gbp_lookback_days")
+            gbp_start_date_param = None
+        else:
+            date_col1, date_col2 = st.columns(2)
+            with date_col1:
+                gbp_start_date_param = st.date_input("Start date", value=(datetime.now() - timedelta(days=90)), key="gbp_start_date")
+            with date_col2:
+                end_date_param = st.date_input("End date", value=datetime.now(), key="gbp_end_date")
+
+        if st.button("Run GBP/USD Quantum Backtest"):
+            with st.spinner(f"Fetching data and running Quantum Backtest for {gbp_symbol}..."):
+                start_date_str = None
+                if gbp_lookback_option == "Last N Days":
+                    start_date_str = (datetime.now() - timedelta(days=gbp_lookback_days)).strftime('%Y-%m-%d')
+                elif gbp_start_date_param:
+                    start_date_str = gbp_start_date_param.strftime('%Y-%m-%d')
+
+                # Fetch all necessary data for the backtest period
+                df_backtest = fetch_and_analyze(symbol=gbp_symbol, timeframe=gbp_backtest_timeframe, start_date=start_date_str)
+
+                stats = backtest_composite_derivative(df_backtest, gbp_symbol)
+
+                if stats:
+                    # Display metrics
+                    m1, m2, m3, m4, m5 = st.columns(5)
+                    m1.metric("Final Balance", f"${stats['final_balance']:.2f}")
+                    m2.metric("ROI", f"{stats['roi']:.2f}%")
+                    m3.metric("Total Trades", int(stats['total_trades']))
+                    m4.metric("Win Rate", f"{stats['win_rate']:.1f}%")
+                    m5.metric("Profit Factor", f"{stats['profit_factor']:.2f}")
+
+                    st.divider()
+                    st.subheader("Trade History")
+                    if stats['trade_history']:
+                        trade_df = pd.DataFrame(stats['trade_history']).sort_values(by='entry_date')
+                        trade_df['pnl_pct'] = trade_df['pnl'] * 100
+                        styler = trade_df.style.format({
+                            'entry_price': '{:.5f}', 'exit_price': '{:.5f}', 'pnl_pct': '{:.2f}%'
+                        })
+                        styler = styler.map(color_metrics, subset=['pnl_pct'])
+                        st.dataframe(styler, width='stretch')
+                    else:
+                        st.warning("No trades were generated during this backtest period.")
+                else:
+                    st.error(f"Could not run backtest for {gbp_symbol}. Ensure data is available for the selected period.")
 
 if __name__ == "__main__":
      try:
