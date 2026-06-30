@@ -11,6 +11,7 @@ import matplotlib
 matplotlib.use('Agg') # Fix for Streamlit/Matplotlib GUI errors
 import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
+import plotly.graph_objects as go
 import streamlit.components.v1 as components
 
 
@@ -36,7 +37,7 @@ def fetch_fear_and_greed_history():
         return None
 
 @st.cache_data(ttl=300)
-def fetch_and_analyze(symbol='BTC/USDT', timeframe='1h', start_date=None, end_date=None, silent=False):
+def fetch_and_analyze(symbol='BTC/USDT', timeframe='1h', start_date=None, end_date=None, silent=False, limit=None):
     """
     Fetches Crypto Data (via ccxt/Binance) and calculates Multi-Strategy Factors.
     """
@@ -114,7 +115,7 @@ def fetch_and_analyze(symbol='BTC/USDT', timeframe='1h', start_date=None, end_da
         else:
             # Fetch Crypto Data via Binance (CCXT)
             print(f"Fetching data for {symbol} via Binance...")
-            exchange = ccxt.binance({'enableRateLimit': True})
+            exchange = ccxt.binance({'enableRateLimit': True}) # Using binance.com for yfinance consistency
             limit = 1000 # Binance API limit per request
             all_ohlcv = []
 
@@ -136,8 +137,9 @@ def fetch_and_analyze(symbol='BTC/USDT', timeframe='1h', start_date=None, end_da
                     since = ohlcv_chunk[-1][0] + 1 
             else:
                 # Live analysis mode: Fetch latest N candles
-                print(f"Fetching latest {limit} candles for live analysis of {symbol}...")
-                all_ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+                fetch_limit = limit if limit is not None else 1000
+                print(f"Fetching latest {fetch_limit} candles for live analysis of {symbol}...")
+                all_ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=fetch_limit)
             
             if all_ohlcv:
                 df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
@@ -1471,7 +1473,7 @@ def main():
     tg_chat_id = st.sidebar.text_input("Telegram Chat ID")
 
     # Tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["📊 Market Overview", "⚡ Top Crypto Ranking", "🔥 Derivatives Trend Scan", "🛠️ Backtest Engine", "🏛️ US Indices", "🎯 Composite Derivative Backtest", "🌌 Volatility Quantum Analysis", "🇬🇧 GBP/USD Quantum Backtest"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs(["📊 Market Overview", "⚡ Top Crypto Ranking", "🔥 Derivatives Trend Scan", "🛠️ Backtest Engine", "🏛️ US Indices", "🎯 Composite Derivative Backtest", "🌌 Volatility Quantum Analysis", "📈 Volatility Dashboard", "🇬🇧 GBP/USD Quantum Backtest", "🛡️ Options Analysis (GEX)"])
 
     with tab1:
         st.subheader(f"Live Analysis: {symbol}")
@@ -1827,12 +1829,14 @@ def main():
         # Timeframe selector for indices/stocks (15m, 1h, 4h)
         timeframe = st.selectbox("Select timeframe", ["15m", "1h", "4h"], index=1)
         
-        indices = ['SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB']
-        index_stats = []
-        missing_indices = []
+        if 'index_stats' not in st.session_state:
+            st.session_state.index_stats = []
         
         if st.button("Refresh Indices Data"):
-            with st.spinner("Fetching US Indices..."):
+            with st.spinner("Fetching US Indices Data..."):
+                indices = ['SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB'] # Main indices for this table
+                index_stats = []
+                missing_indices = []
                 for sym in indices:
                     df_idx = fetch_and_analyze(sym, timeframe=timeframe, silent=True)
                     if df_idx is not None and not df_idx.empty:
@@ -1866,47 +1870,184 @@ def main():
                         })
                     else:
                         missing_indices.append(sym)
-                        
-                if index_stats:
-                    df_ind = pd.DataFrame(index_stats)
-                    advancing_count = int(df_ind['Advancing'].sum())
-                    declining_count = int(df_ind['Declining'].sum())
-                    total_count = len(df_ind)
-                    breadth_ratio = advancing_count / declining_count if declining_count > 0 else None
-                    if declining_count > 0:
-                        breadth_ratio_label = f"{breadth_ratio:.2f} ({advancing_count}/{declining_count})"
-                    else:
-                        breadth_ratio_label = f"All advancing ({advancing_count}/{declining_count})" if advancing_count > 0 else f"No decliners ({advancing_count}/{declining_count})"
-                    breadth_percent = advancing_count / total_count if total_count > 0 else 0.0
-                    df_ind['Breadth Ratio'] = breadth_ratio_label
-                    df_ind['Breadth %'] = breadth_percent
-                    df_display = df_ind.drop(columns=['Advancing', 'Declining'])
-                    df_display = df_display[[
-                        "Symbol", "Breadth Ratio", "Breadth %", "Price", "Momentum", "RSI",
-                        "Trend", "Signal Score", "Volume Ratio", "Flow Z-Score",
-                        "Z-Score", "Est. Daily Volume"
-                    ]]
-                    if missing_indices:
-                        st.warning(f"Could not load: {', '.join(missing_indices)}")
-                    st.caption("Breadth Ratio = Advancing / Declining. Breadth % = Advancing / Total. Signal Score = -Z-Score + ln(1 + Volume Ratio) + Flow Z-Score")
-                    styler = df_display.style.format({
-                        "Price": "${:.2f}",
-                        "Momentum": "{:.2%}",
-                        "RSI": "{:.2f}",
-                        "Est. Daily Volume": format_large_number,
-                        "Z-Score": "{:.2f}",
-                        "Volume Ratio": "{:.2f}x",
-                        "Flow Z-Score": "{:.2f}",
-                        "Signal Score": "{:.2f}",
-                        "Breadth %": "{:.0%}"
-                    })
-                    
-                    if hasattr(styler, 'map'):
-                        styler = styler.map(color_metrics, subset=['Momentum', 'Z-Score', 'Flow Z-Score', 'Signal Score', 'Breadth %'])
-                    else:
-                        styler = styler.applymap(color_metrics, subset=['Momentum', 'Z-Score', 'Flow Z-Score', 'Signal Score', 'Breadth %'])
-                        
-                    st.dataframe(styler, width='stretch')
+                
+                # Save the results to session state
+                st.session_state.index_stats = index_stats
+
+        # Display the table if data exists in session state
+        if st.session_state.index_stats:
+            df_ind = pd.DataFrame(st.session_state.index_stats)
+            advancing_count = int(df_ind['Advancing'].sum())
+            declining_count = int(df_ind['Declining'].sum())
+            total_count = len(df_ind)
+            breadth_ratio = advancing_count / declining_count if declining_count > 0 else None
+            if declining_count > 0:
+                breadth_ratio_label = f"{breadth_ratio:.2f} ({advancing_count}/{declining_count})"
+            else:
+                breadth_ratio_label = f"All advancing ({advancing_count}/{declining_count})" if advancing_count > 0 else f"No decliners ({advancing_count}/{declining_count})"
+            breadth_percent = advancing_count / total_count if total_count > 0 else 0.0
+            df_ind['Breadth Ratio'] = breadth_ratio_label
+            df_ind['Breadth %'] = breadth_percent
+            df_display = df_ind.drop(columns=['Advancing', 'Declining'])
+            df_display = df_display[[
+                "Symbol", "Breadth Ratio", "Breadth %", "Price", "Momentum", "RSI",
+                "Trend", "Signal Score", "Volume Ratio", "Flow Z-Score",
+                "Z-Score", "Est. Daily Volume"
+            ]]
+            st.caption("Breadth Ratio = Advancing / Declining. Breadth % = Advancing / Total. Signal Score = -Z-Score + ln(1 + Volume Ratio) + Flow Z-Score")
+            styler = df_display.style.format({
+                "Price": "${:.2f}",
+                "Momentum": "{:.2%}",
+                "RSI": "{:.2f}",
+                "Est. Daily Volume": format_large_number,
+                "Z-Score": "{:.2f}",
+                "Volume Ratio": "{:.2f}x",
+                "Flow Z-Score": "{:.2f}",
+                "Signal Score": "{:.2f}",
+                "Breadth %": "{:.0%}"
+            })
+            
+            if hasattr(styler, 'map'):
+                styler = styler.map(color_metrics, subset=['Momentum', 'Z-Score', 'Flow Z-Score', 'Signal Score', 'Breadth %'])
+            else:
+                styler = styler.applymap(color_metrics, subset=['Momentum', 'Z-Score', 'Flow Z-Score', 'Signal Score', 'Breadth %'])
+                
+            st.dataframe(styler, width='stretch')
+
+        # --- Real-Time Order Flow Table ---
+        st.divider()
+        st.subheader("📊 Real-Time Order Flow")
+        c1, c2 = st.columns(2)
+        with c1:
+            flow_tf = st.selectbox("Select Order Flow Timeframe", options=['5m', '15m', '1h', '4h'], index=2)
+        with c2:
+            flow_candles = st.number_input("Number of Candles to Analyze", min_value=50, max_value=1000, value=500, step=50)
+        
+        if st.button("Refresh Order Flow"):
+            with st.spinner(f"Calculating order flow for {flow_tf} timeframe..."):
+                indices = ['SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB']
+                order_flow_data = []
+                for sym in indices:
+                    df_flow_calc = fetch_and_analyze(sym, timeframe=flow_tf, silent=True, limit=flow_candles)
+                    if df_flow_calc is not None and not df_flow_calc.empty:
+                        df_flow_calc['is_up'] = df_flow_calc['close'] >= df_flow_calc['open']
+                        inflow = float(df_flow_calc.loc[df_flow_calc['is_up'], 'volume'].sum())
+                        outflow = float(df_flow_calc.loc[~df_flow_calc['is_up'], 'volume'].sum())
+                        order_flow_data.append({
+                            'Symbol': sym,
+                            'Inflow': inflow,
+                            'Outflow': outflow,
+                            'Net Flow': inflow - outflow,
+                            'Money Flow Signal': (inflow - outflow) / (inflow + outflow) if (inflow + outflow) > 0 else 0
+                        })
+                st.session_state.order_flow_data = (order_flow_data, flow_candles, flow_tf)
+
+        if 'order_flow_data' in st.session_state and st.session_state.order_flow_data and st.session_state.order_flow_data[0]:
+            order_flow_data, flow_candles, flow_tf = st.session_state.order_flow_data
+            st.caption(f"Shows buying vs. selling pressure based on the last {flow_candles} candles ({flow_tf} timeframe).")
+            df_flow = pd.DataFrame(order_flow_data)
+            df_flow.sort_values(by='Net Flow', ascending=False, inplace=True)
+
+            styler_flow = df_flow.style.format({
+                'Inflow': format_large_number,
+                'Outflow': format_large_number,
+                'Net Flow': format_large_number,
+                'Money Flow Signal': '{:.2f}'
+            })
+            styler_flow = styler_flow.background_gradient(subset=['Net Flow'], cmap='RdYlGn')
+            styler_flow = styler_flow.bar(subset=['Money Flow Signal'], align='zero', color=['#d65f5f', '#5fba7d'])
+            st.dataframe(styler_flow, width='stretch')
+
+        # --- QS Score Comparison for SPY, QQQ, DIA ---
+        st.divider()
+        st.subheader("Macro Quant Strength (QS) Comparison")
+        st.caption("This table compares major indices and currency pairs using a relative strength model. A higher score indicates stronger performance versus the group.")
+
+        qs_indices_data = []
+        indices_for_qs = ['SPY', 'QQQ', 'DIA', 'DX-Y.NYB', '^FTSE', 'GBPUSD=X']
+        for sym in indices_for_qs:
+            df_idx_qs = fetch_and_analyze(sym, timeframe=timeframe, silent=True)
+            if df_idx_qs is not None and not df_idx_qs.empty:
+                current = df_idx_qs.iloc[-1]
+                # Calculate money flow signal (inflow vs outflow)
+                df_idx_qs['is_up'] = df_idx_qs['close'] >= df_idx_qs['open']
+                inflow = float(df_idx_qs.loc[df_idx_qs['is_up'], 'volume'].sum())
+                outflow = float(df_idx_qs.loc[~df_idx_qs['is_up'], 'volume'].sum())
+                total_flow = inflow + outflow
+                money_flow_signal = (inflow - outflow) / total_flow if total_flow > 0 else 0.0
+
+                qs_indices_data.append({
+                    'symbol': sym,
+                    'momentum': current.get('momentum', 0.0),
+                    'money_flow_signal': money_flow_signal,
+                    'atr14': current.get('atr14', 0.0),
+                    'z_score_raw': current.get('z_score', 0.0) # Price vs BBands
+                })
+        
+        if len(qs_indices_data) >= 3: # Check if we have at least 3 to compare
+            df_qs_indices = pd.DataFrame(qs_indices_data)
+            
+            # Calculate Z-Scores relative to each other
+            df_qs_indices['z_momentum'] = (df_qs_indices['momentum'] - df_qs_indices['momentum'].mean()) / df_qs_indices['momentum'].std()
+            df_qs_indices['z_flow'] = (df_qs_indices['money_flow_signal'] - df_qs_indices['money_flow_signal'].mean()) / df_qs_indices['money_flow_signal'].std()
+            df_qs_indices['z_volatility'] = (df_qs_indices['atr14'] - df_qs_indices['atr14'].mean()) / df_qs_indices['atr14'].std()
+            df_qs_indices['z_trend'] = (df_qs_indices['z_score_raw'] - df_qs_indices['z_score_raw'].mean()) / df_qs_indices['z_score_raw'].std()
+
+            # Apply the QS formula (simplified for indices, no z_volume)
+            df_qs_indices['qs_score'] = (
+                (0.50 * df_qs_indices['z_momentum']) +
+                (0.30 * df_qs_indices['z_flow']) -
+                (0.10 * df_qs_indices['z_volatility']) +
+                (0.10 * df_qs_indices['z_trend'])
+            ).fillna(0)
+
+            df_qs_indices.sort_values(by='qs_score', ascending=False, inplace=True)
+
+            # Display the table
+            display_cols = ['symbol', 'qs_score', 'z_momentum', 'z_flow', 'z_volatility', 'z_trend']
+            styler_qs = df_qs_indices[display_cols].style.format({
+                'qs_score': '{:.2f}',
+                'z_momentum': '{:.2f}',
+                'z_flow': '{:.2f}',
+                'z_volatility': '{:.2f}',
+                'z_trend': '{:.2f}'
+            }).background_gradient(subset=['qs_score'], cmap='viridis')
+
+            st.dataframe(styler_qs, width='stretch')
+        else:
+            st.warning("Could not fetch enough data for the Macro QS comparison.")
+
+        # --- Key Support Levels (Put Support Proxy) ---
+        st.divider()
+        st.subheader("Key Support Levels (Put Support Proxy)")
+        st.caption("These technical levels often act as strong support, similar to areas with high Put option open interest.")
+        
+        support_data = []
+        for sym in indices_for_qs:
+            # We can reuse the data we just fetched
+            df_support = fetch_and_analyze(sym, timeframe=timeframe, silent=True)
+            if df_support is not None and not df_support.empty:
+                current = df_support.iloc[-1]
+                support_data.append({
+                    'Symbol': sym,
+                    'Current Price': current['close'],
+                    'Bullish Order Block': current.get('ob_bull', 0.0),
+                    'Lower Bollinger Band': current.get('bb_lower', 0.0),
+                    '200-Period MA': current.get('sma_200', 0.0)
+                })
+        
+        if support_data:
+            df_support_levels = pd.DataFrame(support_data)
+            styler_support = df_support_levels.style.format({
+                'Current Price': '${:,.2f}',
+                'Bullish Order Block': '${:,.2f}',
+                'Lower Bollinger Band': '${:,.2f}',
+                '200-Period MA': '${:,.2f}'
+            }).background_gradient(
+                subset=['Bullish Order Block', 'Lower Bollinger Band', '200-Period MA'], 
+                cmap='Reds_r' # Use a reverse red map to highlight lower values
+            )
+            st.dataframe(styler_support, width='stretch')
         else:
             st.info("Click 'Refresh Indices Data' to load the latest metrics for US Markets.")
             
@@ -1914,63 +2055,89 @@ def main():
         st.subheader("🏢 Top 10 US Stocks Overview")
         st.write("Tracking the top 10 US companies by market cap.")
         
+        # Initialize session state to hold the dataframe from the scan
+        if 'df_stocks' not in st.session_state:
+            st.session_state.df_stocks = pd.DataFrame()
+            
         top_stocks = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'LLY', 'JPM']
-        stock_stats = []
         
         if st.button("Refresh Stocks Data"):
-            with st.spinner("Fetching US Stocks..."):
-                bullish_trends = 0
-                positive_momentum = 0
-                valid_stocks = 0
+            with st.spinner("Fetching and analyzing Top 10 US Stocks..."):
+                qs_stocks_data = []
                 
                 for sym in top_stocks:
                     df_stock = fetch_and_analyze(sym, timeframe=timeframe, silent=True)
                     if df_stock is not None and not df_stock.empty:
                         current = df_stock.iloc[-1]
-                        est_vol = df_stock['volume'].tail(7).sum()
-                        
-                        is_bullish = current['close'] > current['ema_50']
-                        if is_bullish: bullish_trends += 1
-                        if current['momentum'] > 0: positive_momentum += 1
-                        valid_stocks += 1
-                        
-                        stock_stats.append({
-                            "Symbol": sym,
-                            "Price": current['close'],
-                            "Momentum": current['momentum'],
-                            "RSI": current['rsi'],
-                            "Trend": "Bullish 🟢" if is_bullish else "Bearish 🔴",
-                            "Est. Daily Volume": est_vol,
-                            "Z-Score": current['z_score']
+
+                        # Calculate money flow signal
+                        df_stock['is_up'] = df_stock['close'] >= df_stock['open']
+                        inflow = float(df_stock.loc[df_stock['is_up'], 'volume'].sum())
+                        outflow = float(df_stock.loc[~df_stock['is_up'], 'volume'].sum())
+                        total_flow = inflow + outflow
+                        money_flow_signal = (inflow - outflow) / total_flow if total_flow > 0 else 0.0
+
+                        qs_stocks_data.append({
+                            'symbol': sym,
+                            'price': current.get('close', 0.0),
+                            'momentum': current.get('momentum', 0.0),
+                            'money_flow_signal': money_flow_signal,
+                            'atr14': current.get('atr14', 0.0),
+                            'z_score_raw': current.get('z_score', 0.0),
+                            'rsi': current.get('rsi', 50.0),
+                            'trend_bullish': current.get('close', 0) > current.get('ema_50', 0)
                         })
                         
-                if stock_stats:
-                    # --- Market Health Score UI ---
-                    health_score = (bullish_trends / valid_stocks) * 100
-                    health_status = "🟢 STRONG BULL" if health_score >= 70 else "🔴 BEARISH" if health_score <= 30 else "🟡 NEUTRAL"
-                    
-                    hc1, hc2, hc3 = st.columns(3)
-                    hc1.metric("Stocks in Bullish Trend", f"{bullish_trends} / {valid_stocks}")
-                    hc2.metric("Positive Momentum", f"{positive_momentum} / {valid_stocks}")
-                    hc3.metric("Overall Health", health_status)
-                    
-                    st.write("") # Spacer
-                    
-                    df_stocks = pd.DataFrame(stock_stats)
-                    styler_stocks = df_stocks.style.format({
-                        "Price": "${:.2f}",
-                        "Momentum": "{:.2%}",
-                        "RSI": "{:.2f}",
-                        "Est. Daily Volume": format_large_number,
-                        "Z-Score": "{:.2f}"
-                    })
-                    
-                    if hasattr(styler_stocks, 'map'):
-                        styler_stocks = styler_stocks.map(color_metrics, subset=['Momentum', 'Z-Score'])
-                    else:
-                        styler_stocks = styler_stocks.applymap(color_metrics, subset=['Momentum', 'Z-Score'])
-                        
-                    st.dataframe(styler_stocks, width='stretch')
+                if qs_stocks_data:
+                    df_stocks = pd.DataFrame(qs_stocks_data)
+
+                    # Calculate Z-Scores and QS Score
+                    df_stocks['z_momentum'] = (df_stocks['momentum'] - df_stocks['momentum'].mean()) / df_stocks['momentum'].std()
+                    df_stocks['z_flow'] = (df_stocks['money_flow_signal'] - df_stocks['money_flow_signal'].mean()) / df_stocks['money_flow_signal'].std()
+                    df_stocks['z_volatility'] = (df_stocks['atr14'] - df_stocks['atr14'].mean()) / df_stocks['atr14'].std()
+                    df_stocks['z_trend'] = (df_stocks['z_score_raw'] - df_stocks['z_score_raw'].mean()) / df_stocks['z_score_raw'].std()
+
+                    df_stocks['qs_score'] = (
+                        (0.50 * df_stocks['z_momentum']) +
+                        (0.30 * df_stocks['z_flow']) -
+                        (0.10 * df_stocks['z_volatility']) +
+                        (0.10 * df_stocks['z_trend'])
+                    ).fillna(0)
+
+                    df_stocks.sort_values(by='qs_score', ascending=False, inplace=True)
+                    st.session_state.df_stocks = df_stocks
+                else:
+                    st.warning("No stock data was returned from the fetch operation.")
+
+        if not st.session_state.df_stocks.empty:
+            df_stocks = st.session_state.df_stocks
+
+            # --- Market Health Score UI ---
+            bullish_trends = df_stocks['trend_bullish'].sum()
+            positive_momentum = (df_stocks['momentum'] > 0).sum()
+            valid_stocks = len(df_stocks)
+            health_score = (bullish_trends / valid_stocks) * 100 if valid_stocks > 0 else 0
+            health_status = "🟢 STRONG BULL" if health_score >= 70 else "🔴 BEARISH" if health_score <= 30 else "🟡 NEUTRAL"
+            
+            hc1, hc2, hc3 = st.columns(3)
+            hc1.metric("Stocks in Bullish Trend", f"{bullish_trends} / {valid_stocks}")
+            hc2.metric("Positive Momentum", f"{positive_momentum} / {valid_stocks}")
+            hc3.metric("Overall Health", health_status)
+
+            display_cols = ['symbol', 'qs_score', 'price', 'momentum', 'rsi']
+            styler_stocks = df_stocks[display_cols].style.format({
+                "price": "${:.2f}",
+                "qs_score": "{:.2f}",
+                "momentum": "{:.2%}",
+                "rsi": "{:.1f}"
+            })
+
+            if hasattr(styler_stocks, 'map'):
+                styler_stocks = styler_stocks.map(color_metrics, subset=['momentum'])
+            else:
+                styler_stocks = styler_stocks.applymap(color_metrics, subset=['momentum'])
+
+            st.dataframe(styler_stocks, width='stretch')
         else:
             st.info("Click 'Refresh Stocks Data' to load the latest metrics for Top US Stocks.")
 
@@ -2166,6 +2333,184 @@ def main():
                         st.warning("No trades were generated during this backtest period.")
                 else:
                     st.error(f"Could not run backtest for {gbp_symbol}. Ensure data is available for the selected period.")
+
+    with tab8:
+        st.subheader("📈 Volatility Dashboard (GEX Proxy)")
+        st.info("""
+        This dashboard visualizes key price levels that often act like high Gamma Exposure zones, influencing volatility.
+        - **Order Blocks (Red/Green Lines)**: Institutional support/resistance. Prices often reject from these levels.
+        - **Fair Value Gaps (Shaded Zones)**: Price imbalances that act as magnets. The market tends to revisit these zones to 'rebalance' price.
+        - **Bollinger Bands (Dashed Lines)**: Dynamic support/resistance. Prices are statistically 'expensive' or 'cheap' at these bands.
+        """)
+
+        c1, c2 = st.columns(2)
+        with c1:
+            # Note: SPX options are cash-settled and have different dynamics. SPY is the ETF equivalent and more suitable for this technical analysis.
+            gamma_asset = st.selectbox("Select Asset", options=['SPY', 'QQQ', 'DIA', 'GBPUSD=X'], index=0, key='gamma_asset')
+        with c2:
+            gamma_tf = st.selectbox("Select Timeframe", options=['15m', '1h', '4h'], index=1, key='gamma_tf')
+
+        if st.button("Generate Volatility Chart", key='gen_gamma_chart'):
+            with st.spinner(f"Fetching data and identifying key levels for {gamma_asset}..."):
+                df_gamma = fetch_and_analyze(gamma_asset, timeframe=gamma_tf, limit=200) # Fetch last 200 candles
+
+                if df_gamma is not None and not df_gamma.empty:
+                    # --- Create Interactive Plotly Chart ---
+                    fig = go.Figure()
+
+                    # 1. Candlestick Chart for Price
+                    fig.add_trace(go.Candlestick(x=df_gamma.index,
+                                                 open=df_gamma['open'],
+                                                 high=df_gamma['high'],
+                                                 low=df_gamma['low'],
+                                                 close=df_gamma['close'],
+                                                 name='Price'))
+
+                    # 2. Bollinger Bands
+                    fig.add_trace(go.Scatter(x=df_gamma.index, y=df_gamma['bb_upper'], mode='lines',
+                                             line=dict(color='gray', width=1, dash='dash'), name='Bollinger Bands'))
+                    fig.add_trace(go.Scatter(x=df_gamma.index, y=df_gamma['bb_lower'], mode='lines',
+                                             line=dict(color='gray', width=1, dash='dash'), showlegend=False))
+
+                    # 3. Order Blocks (Horizontal Lines)
+                    fig.add_hline(y=df_gamma['ob_bear'].iloc[-1], line_width=2, line_dash="solid", line_color="red",
+                                  annotation_text="Bearish Order Block", annotation_position="bottom right")
+                    fig.add_hline(y=df_gamma['ob_bull'].iloc[-1], line_width=2, line_dash="solid", line_color="green",
+                                  annotation_text="Bullish Order Block", annotation_position="top right")
+
+                    # 4. Fair Value Gaps (Shaded Rectangles)
+                    # Find the most recent FVG zones to plot
+                    bull_fvg_top = df_gamma['last_bull_fvg_top'].iloc[-1]
+                    bull_fvg_bottom = df_gamma['last_bull_fvg_bottom'].iloc[-1]
+                    bear_fvg_top = df_gamma['last_bear_fvg_top'].iloc[-1]
+                    bear_fvg_bottom = df_gamma['last_bear_fvg_bottom'].iloc[-1]
+
+                    if bull_fvg_top > 0:
+                        fig.add_hrect(y0=bull_fvg_bottom, y1=bull_fvg_top, line_width=0, fillcolor="green", opacity=0.2,
+                                      annotation_text="Bullish FVG", annotation_position="top left")
+                    if bear_fvg_top < 10000000:
+                         fig.add_hrect(y0=bear_fvg_bottom, y1=bear_fvg_top, line_width=0, fillcolor="red", opacity=0.2,
+                                       annotation_text="Bearish FVG", annotation_position="bottom left")
+
+                    # 5. Update Layout for TradingView feel
+                    fig.update_layout(
+                        title=f"Key Volatility Levels for {gamma_asset} ({gamma_tf})",
+                        yaxis_title='Price',
+                        xaxis_rangeslider_visible=False, # Hide the range slider
+                        template='plotly_dark', # Dark theme
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning(f"Could not fetch data for {gamma_asset} on the {gamma_tf} timeframe.")
+
+    with tab10:
+        st.subheader("🛡️ Options Gamma Exposure (GEX)")
+        st.info("""
+        This tool analyzes real options data to calculate the total Gamma Exposure (GEX) of market makers. High GEX can suppress volatility, while certain strike levels can act as 'magnets' or 'pins' for the price.
+        - **Total GEX**: The overall gamma imbalance. A large positive value suggests volatility suppression (a 'gamma trap').
+        - **Zero Gamma**: The price level where market maker gamma exposure flips from positive to negative. This level can act as a pivot point.
+        - **GEX Profile**: The bar chart shows which strike prices hold the most positive (call) and negative (put) gamma.
+        """)
+
+        gex_asset = st.selectbox("Select Asset (US Stocks/ETFs)", options=['SPY', 'QQQ', 'IWM', 'DIA', 'AAPL', 'TSLA', 'NVDA', 'AMZN'], key='gex_asset')
+
+        @st.cache_data(ttl=600) # Cache for 10 minutes
+        def calculate_gex(symbol):
+            """Fetches options data and calculates Gamma Exposure."""
+            try:
+                ticker = yf.Ticker(symbol)
+                current_price = ticker.history(period='1d')['Close'].iloc[-1]
+                expirations = ticker.options
+                
+                # Limit to nearest expirations for performance
+                expirations_to_scan = expirations[:min(5, len(expirations))]
+
+                all_options = []
+                for exp in expirations_to_scan:
+                    opt_chain = ticker.option_chain(exp)
+                    # Combine calls and puts, adding a 'type' column
+                    opt_chain.calls['type'] = 'call'
+                    opt_chain.puts['type'] = 'put'
+                    all_options.append(opt_chain.calls)
+                    all_options.append(opt_chain.puts)
+                
+                if not all_options:
+                    return {"current_price": current_price}, "No options data found for this asset."
+
+                df = pd.concat(all_options)
+                df.fillna(0, inplace=True)
+
+                # --- Enhanced Robustness Check ---
+                # yfinance may provide a mix of contracts with and without greeks.
+                # We will filter to only use rows where gamma and openInterest are available and non-zero.
+                if 'gamma' not in df.columns or 'openInterest' not in df.columns:
+                    return {"current_price": current_price}, "GEX calculation failed: The API did not provide 'gamma' or 'openInterest' data for this asset."
+
+                # Filter for usable data
+                df_valid = df[(df['gamma'] > 0) & (df['openInterest'] > 0)].copy()
+                if df_valid.empty:
+                    return {"current_price": current_price}, "GEX calculation failed: No valid options contracts with Gamma and Open Interest were found."
+
+                # GEX = Gamma * Open Interest * 100 shares/contract
+                # Puts have a negative impact on dealer gamma as they are short puts (long stock hedge)
+                df_valid['gamma_exposure'] = df_valid['gamma'] * df_valid['openInterest'] * 100 * np.where(df_valid['type'] == 'put', -1, 1)
+                
+                # Group by strike to see the profile
+                gex_profile = df_valid.groupby('strike')['gamma_exposure'].sum()
+
+                total_gex = gex_profile.sum()
+
+                # Find Zero Gamma Level (where cumulative GEX flips)
+                cumulative_gex = gex_profile.sort_index().cumsum()
+                zero_gamma_level = cumulative_gex[cumulative_gex > 0].index.min()
+
+                return {
+                    "total_gex": total_gex,
+                    "zero_gamma_level": zero_gamma_level,
+                    "gex_profile": gex_profile,
+                    "current_price": current_price
+                }, None
+            except Exception as e:
+                # Attempt to get price even if options fail
+                try:
+                    price = yf.Ticker(symbol).history(period='1d')['Close'].iloc[-1]
+                    return {"current_price": price}, str(e)
+                except:
+                    return None, str(e)
+
+        if st.button("Analyze Gamma Exposure", key='run_gex'):
+            with st.spinner(f"Fetching options chain for {gex_asset}..."):
+                gex_data, error = calculate_gex(gex_asset)
+                if error and gex_data and 'current_price' in gex_data:
+                    st.metric("Current Price", f"${gex_data.get('current_price', 0):,.2f}")
+                    st.error(f"Could not calculate GEX: {error}")
+                elif gex_data and 'gex_profile' in gex_data:
+                    # --- Display Metrics ---
+                    st.metric("Total GEX (Notional)", f"{gex_data['total_gex']:,.0f}")
+                    st.metric("Zero Gamma Level", f"${gex_data['zero_gamma_level']:.2f}")
+                    st.metric("Current Price", f"${gex_data['current_price']:.2f}")
+
+                    # --- Create Enhanced Plotly Chart ---
+                    gex_profile_df = gex_data['gex_profile'].reset_index()
+                    gex_profile_df.columns = ['strike', 'gamma_exposure']
+
+                    fig = go.Figure()
+
+                    # Add GEX bars
+                    fig.add_trace(go.Bar(x=gex_profile_df['strike'], y=gex_profile_df['gamma_exposure'], name='Gamma Exposure'))
+
+                    # Add Zero Gamma line
+                    fig.add_vline(x=gex_data['zero_gamma_level'], line_width=2, line_dash="dash", line_color="yellow",
+                                  annotation_text="Zero Gamma", annotation_position="top right")
+
+                    # Add Current Price line
+                    fig.add_vline(x=gex_data['current_price'], line_width=2, line_dash="solid", line_color="cyan",
+                                  annotation_text="Current Price", annotation_position="top left")
+
+                    fig.update_layout(title=f'Gamma Exposure Profile for {gex_asset}', xaxis_title='Strike Price', yaxis_title='Gamma Exposure (Notional)', template='plotly_dark')
+                    st.plotly_chart(fig, use_container_width=True)
 
 if __name__ == "__main__":
      try:

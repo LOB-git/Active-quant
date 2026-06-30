@@ -3,6 +3,7 @@ yfinance
 pandas
 numpy
 matplotlib
+plotly
 ccxt
 requests
 scipy
