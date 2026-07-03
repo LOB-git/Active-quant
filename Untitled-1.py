@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 import plotly.graph_objects as go
 import streamlit.components.v1 as components
+from polygon import RESTClient
 
 
 # Set page config at the top level to avoid errors and define layout
@@ -1471,6 +1472,7 @@ def main():
     st.sidebar.header("Notifications")
     tg_token = st.sidebar.text_input("Telegram Bot Token", type="password")
     tg_chat_id = st.sidebar.text_input("Telegram Chat ID")
+    polygon_api_key = st.sidebar.text_input("Polygon.io API Key", type="password")
 
     # Tabs
     tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs(["📊 Market Overview", "⚡ Top Crypto Ranking", "🔥 Derivatives Trend Scan", "🛠️ Backtest Engine", "🏛️ US Indices", "🎯 Composite Derivative Backtest", "🌌 Volatility Quantum Analysis", "📈 Volatility Dashboard", "🇬🇧 GBP/USD Quantum Backtest", "🛡️ Options Analysis (GEX)"])
@@ -2017,6 +2019,51 @@ def main():
         else:
             st.warning("Could not fetch enough data for the Macro QS comparison.")
 
+        # --- Historical Z-Score Chart ---
+        st.divider()
+        st.subheader("Historical Z-Score Component Analysis")
+        st.caption("This chart shows the historical Z-scores for each component of the QS score for a single asset. This helps identify which factors are strengthening or weakening over time. A value of +2 means the factor is 2 standard deviations above its own recent history.")
+
+        if 'df_qs_indices' in locals() and not df_qs_indices.empty:
+            z_chart_symbols = df_qs_indices['symbol'].tolist()
+            z_chart_asset = st.selectbox("Select Asset for Z-Score Chart", options=z_chart_symbols)
+
+            if st.button(f"Generate Historical Z-Chart for {z_chart_asset}"):
+                with st.spinner(f"Calculating historical Z-scores for {z_chart_asset}..."):
+                    df_z_hist = fetch_and_analyze(z_chart_asset, timeframe=timeframe, silent=True)
+                    if df_z_hist is not None and not df_z_hist.empty:
+                        # Calculate historical money flow signal
+                        df_z_hist['is_up'] = df_z_hist['close'] >= df_z_hist['open']
+                        inflow = df_z_hist['volume'].where(df_z_hist['is_up'], 0)
+                        outflow = df_z_hist['volume'].where(~df_z_hist['is_up'], 0)
+                        rolling_inflow = inflow.rolling(window=20).sum()
+                        rolling_outflow = outflow.rolling(window=20).sum()
+                        df_z_hist['money_flow_signal'] = (rolling_inflow - rolling_outflow) / (rolling_inflow + rolling_outflow)
+
+                        # Define a function to calculate rolling Z-score for a series
+                        def rolling_zscore(series, window=50):
+                            return (series - series.rolling(window).mean()) / series.rolling(window).std()
+
+                        # Calculate historical Z-scores for each component relative to its own history
+                        z_df = pd.DataFrame(index=df_z_hist.index)
+                        z_df['Momentum (z)'] = rolling_zscore(df_z_hist['momentum'])
+                        z_df['Flow (z)'] = rolling_zscore(df_z_hist['money_flow_signal'])
+                        z_df['Volatility (z)'] = rolling_zscore(df_z_hist['atr14'])
+                        z_df['Trend (z)'] = rolling_zscore(df_z_hist['z_score']) # z_score is price vs BBands
+
+                        # Create Plotly figure
+                        fig_z = go.Figure()
+                        for col in z_df.columns:
+                            fig_z.add_trace(go.Scatter(x=z_df.index, y=z_df[col], mode='lines', name=col))
+
+                        fig_z.add_hline(y=0, line_width=1, line_dash="dash", line_color="grey")
+                        fig_z.update_layout(title=f'Historical Z-Score Components for {z_chart_asset}',
+                                          yaxis_title='Z-Score (Standard Deviations from Mean)',
+                                          template='plotly_dark')
+                        st.plotly_chart(fig_z, width='stretch')
+                    else:
+                        st.error(f"Could not fetch data to generate Z-chart for {z_chart_asset}.")
+
         # --- Key Support Levels (Put Support Proxy) ---
         st.divider()
         st.subheader("Key Support Levels (Put Support Proxy)")
@@ -2401,7 +2448,7 @@ def main():
                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                     )
                     
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
                 else:
                     st.warning(f"Could not fetch data for {gamma_asset} on the {gamma_tf} timeframe.")
 
@@ -2417,42 +2464,52 @@ def main():
         gex_asset = st.selectbox("Select Asset (US Stocks/ETFs)", options=['SPY', 'QQQ', 'IWM', 'DIA', 'AAPL', 'TSLA', 'NVDA', 'AMZN'], key='gex_asset')
 
         @st.cache_data(ttl=600) # Cache for 10 minutes
-        def calculate_gex(symbol):
-            """Fetches options data and calculates Gamma Exposure."""
+        def calculate_gex(symbol, api_key):
+            """Fetches options data from Polygon.io and calculates Gamma Exposure."""
+            if not api_key:
+                return None, "Polygon.io API Key is required. Please enter it in the sidebar."
+
             try:
-                ticker = yf.Ticker(symbol)
-                current_price = ticker.history(period='1d')['Close'].iloc[-1]
-                expirations = ticker.options
+                client = RESTClient(api_key)
+
+                # 1. Get current price of the underlying asset
+                try:
+                    aggs = client.get_aggs(symbol, 1, "day", (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d'), datetime.now().strftime('%Y-%m-%d'))
+                    current_price = aggs[-1].close
+                except Exception as e:
+                     return None, f"Could not fetch current price for {symbol}: {e}"
+
+                # 2. Fetch all options contracts for the underlying (we'll filter by expiration later)
+                # Scan expirations within the next 60 days for relevance
+                today = datetime.now().strftime('%Y-%m-%d')
+                sixty_days_from_now = (datetime.now() + timedelta(days=60)).strftime('%Y-%m-%d')
                 
-                # Limit to nearest expirations for performance
-                expirations_to_scan = expirations[:min(5, len(expirations))]
+                contracts = []
+                for contract in client.list_options_contracts(underlying_ticker=symbol, expiration_date_gte=today, expiration_date_lte=sixty_days_from_now, limit=1000):
+                    contracts.append(contract)
 
-                all_options = []
-                for exp in expirations_to_scan:
-                    opt_chain = ticker.option_chain(exp)
-                    # Combine calls and puts, adding a 'type' column
-                    opt_chain.calls['type'] = 'call'
-                    opt_chain.puts['type'] = 'put'
-                    all_options.append(opt_chain.calls)
-                    all_options.append(opt_chain.puts)
+                if not contracts:
+                    return {"current_price": current_price}, "No options contracts found for this asset in the next 60 days."
+
+                # 3. Get a snapshot of all options to get greeks and OI
+                snapshot = client.get_options_snapshot(symbol)
+
+                options_data = []
+                for option in snapshot:
+                    # Ensure the option has greeks and open interest data
+                    if option.greeks and option.open_interest and option.details:
+                        options_data.append({
+                            'strike': option.details.strike_price,
+                            'gamma': option.greeks.gamma,
+                            'openInterest': option.open_interest,
+                            'type': option.details.contract_type
+                        })
                 
-                if not all_options:
-                    return {"current_price": current_price}, "No options data found for this asset."
+                if not options_data:
+                    return {"current_price": current_price}, "GEX calculation failed: No options contracts with Greeks and Open Interest were found via Polygon API."
 
-                df = pd.concat(all_options)
-                df.fillna(0, inplace=True)
-
-                # --- Enhanced Robustness Check ---
-                # yfinance may provide a mix of contracts with and without greeks.
-                # We will filter to only use rows where gamma and openInterest are available and non-zero.
-                if 'gamma' not in df.columns or 'openInterest' not in df.columns:
-                    return {"current_price": current_price}, "GEX calculation failed: The API did not provide 'gamma' or 'openInterest' data for this asset."
-
-                # Filter for usable data
-                df_valid = df[(df['gamma'] > 0) & (df['openInterest'] > 0)].copy()
-                if df_valid.empty:
-                    return {"current_price": current_price}, "GEX calculation failed: No valid options contracts with Gamma and Open Interest were found."
-
+                df_valid = pd.DataFrame(options_data)
+                
                 # GEX = Gamma * Open Interest * 100 shares/contract
                 # Puts have a negative impact on dealer gamma as they are short puts (long stock hedge)
                 df_valid['gamma_exposure'] = df_valid['gamma'] * df_valid['openInterest'] * 100 * np.where(df_valid['type'] == 'put', -1, 1)
@@ -2462,9 +2519,10 @@ def main():
 
                 total_gex = gex_profile.sum()
 
-                # Find Zero Gamma Level (where cumulative GEX flips)
+                # Find Zero Gamma Level (where cumulative GEX flips from negative to positive)
                 cumulative_gex = gex_profile.sort_index().cumsum()
-                zero_gamma_level = cumulative_gex[cumulative_gex > 0].index.min()
+                zero_gamma_level_series = cumulative_gex[cumulative_gex > 0]
+                zero_gamma_level = zero_gamma_level_series.index.min() if not zero_gamma_level_series.empty else 0
 
                 return {
                     "total_gex": total_gex,
@@ -2473,16 +2531,11 @@ def main():
                     "current_price": current_price
                 }, None
             except Exception as e:
-                # Attempt to get price even if options fail
-                try:
-                    price = yf.Ticker(symbol).history(period='1d')['Close'].iloc[-1]
-                    return {"current_price": price}, str(e)
-                except:
-                    return None, str(e)
+                return None, f"An unexpected error occurred with Polygon API: {e}"
 
         if st.button("Analyze Gamma Exposure", key='run_gex'):
             with st.spinner(f"Fetching options chain for {gex_asset}..."):
-                gex_data, error = calculate_gex(gex_asset)
+                gex_data, error = calculate_gex(gex_asset, polygon_api_key)
                 if error and gex_data and 'current_price' in gex_data:
                     st.metric("Current Price", f"${gex_data.get('current_price', 0):,.2f}")
                     st.error(f"Could not calculate GEX: {error}")
@@ -2510,7 +2563,7 @@ def main():
                                   annotation_text="Current Price", annotation_position="top left")
 
                     fig.update_layout(title=f'Gamma Exposure Profile for {gex_asset}', xaxis_title='Strike Price', yaxis_title='Gamma Exposure (Notional)', template='plotly_dark')
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
 
 if __name__ == "__main__":
      try:
