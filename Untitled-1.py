@@ -13,7 +13,12 @@ import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 import plotly.graph_objects as go
 import streamlit.components.v1 as components
-from polygon import RESTClient
+
+polygon_available = True
+try:
+    from polygon import RESTClient
+except ImportError:
+    polygon_available = False
 
 
 # Set page config at the top level to avoid errors and define layout
@@ -2243,11 +2248,15 @@ def main():
                         current_price = None
                         recent_vol = None
 
-                    # First, attempt to use Polygon options (same function as stocks GEX)
-                    try:
-                        gex_data, gex_error = calculate_gamma_exposure(gex_choice, polygon_api_key, asset_type='stocks')
-                    except Exception:
-                        gex_data, gex_error = None, 'Polygon call failed'
+                    gex_data = None
+                    gex_error = None
+                    if polygon_available:
+                        try:
+                            gex_data, gex_error = calculate_gamma_exposure(gex_choice, polygon_api_key, asset_type='stocks')
+                        except Exception as e:
+                            gex_data, gex_error = None, f'Polygon call failed: {e}'
+                    else:
+                        gex_error = 'Polygon package not installed. Using proxy GEX instead.'
 
                     if gex_data and 'gex_profile' in gex_data:
                         st.metric("Total GEX (Notional)", f"{gex_data['total_gex']:,.0f}")
@@ -2331,7 +2340,7 @@ def main():
         st.caption("This table compares major indices and currency pairs using a relative strength model. A higher score indicates stronger performance versus the group.")
 
         qs_indices_data = []
-        indices_for_qs = ['SPY', 'QQQ', 'DIA', 'DX-Y.NYB', '^FTSE', 'GBPUSD=X']
+        indices_for_qs = ['SPY', 'QQQ', 'DIA', 'DX-Y.NYB', '^FTSE', 'GBPUSD=X', 'XAUUSD']
         for sym in indices_for_qs:
             df_idx_qs = fetch_and_analyze(sym, timeframe=timeframe, silent=True)
             if df_idx_qs is not None and not df_idx_qs.empty:
@@ -2869,6 +2878,8 @@ def main():
         @st.cache_data(ttl=600)
         def calculate_gamma_exposure(symbol, api_key, asset_type='stocks'):
             """Fetches options data from Polygon.io and calculates Gamma Exposure."""
+            if not polygon_available:
+                return None, "Polygon package is not installed. Install the `polygon-api-client` package or use the proxy GEX fallback."
             if not api_key:
                 return None, "Polygon.io API Key is required. Please enter it in the sidebar."
 
