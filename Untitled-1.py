@@ -19,6 +19,45 @@ from polygon import RESTClient
 # Set page config at the top level to avoid errors and define layout
 st.set_page_config(page_title="Quant Scalper 1h", layout="wide")
 
+
+def build_binance_gex_proxy(current_price, recent_volatility=None, strike_count=21):
+    """Build a simple GEX-style proxy profile when Binance options data is unavailable."""
+    if current_price is None or current_price <= 0:
+        return None
+
+    if recent_volatility is None or recent_volatility <= 0:
+        recent_volatility = 0.03
+
+    half_width = max(current_price * 0.2, current_price * recent_volatility * 4)
+    strikes = np.linspace(current_price - half_width, current_price + half_width, strike_count)
+
+    distance = strikes - current_price
+    scale = max(current_price * recent_volatility * 0.75, 1.0)
+    weights = np.exp(-(distance / scale) ** 2)
+    signed_weights = np.where(distance >= 0, -weights, weights)
+
+    profile = pd.Series(signed_weights * (current_price * 0.8), index=strikes)
+    profile.index.name = 'strike'
+    return profile
+
+
+def summarize_gex_profile(gex_profile, current_price):
+    """Summarize a GEX-style profile into total GEX and a zero-Gamma level."""
+    if gex_profile is None:
+        return None
+
+    cumulative_gex = gex_profile.sort_index().cumsum()
+    positive_series = cumulative_gex[cumulative_gex > 0]
+    zero_gamma_level = float(positive_series.index.min()) if not positive_series.empty else float(current_price or 0)
+
+    return {
+        'total_gex': float(gex_profile.sum()),
+        'zero_gamma_level': zero_gamma_level,
+        'gex_profile': gex_profile,
+        'current_price': float(current_price or 0),
+    }
+
+
 @st.cache_data
 def fetch_fear_and_greed_history():
     """
@@ -1155,6 +1194,18 @@ def scan_top_derivative_assets(timeframe='1h', flow_timeframe=None, volume_timef
 
             current = df.iloc[-1]
 
+            # Estimate a simple GEX-notional proxy from price and recent volatility.
+            total_gex = 0.0
+            try:
+                current_price = float(current['close'])
+                returns = df['close'].pct_change().dropna()
+                recent_volatility = float(returns.std() * np.sqrt(24)) if len(returns) > 1 else 0.03
+                proxy_profile = build_binance_gex_proxy(current_price, recent_volatility=recent_volatility)
+                if proxy_profile is not None:
+                    total_gex = float(summarize_gex_profile(proxy_profile, current_price).get('total_gex', 0.0))
+            except Exception:
+                total_gex = 0.0
+
             oi_info = oi_map.get(base_symbol, {})
             open_interest = oi_info.get('openInterestValue') or oi_info.get('openInterest') or ticker.get('openInterest', 0.0)
 
@@ -1261,6 +1312,7 @@ def scan_top_derivative_assets(timeframe='1h', flow_timeframe=None, volume_timef
                 'funding_signal': funding_signal,
                 'money_flow_signal': money_flow_signal,
                 'tps': tps,
+                'total_gex': total_gex,
                 'open_interest': open_interest,
                 '24h_volume': ticker.get('quoteVolume', 0.0),
                 'vol_5m': vol_5m,
@@ -1435,8 +1487,188 @@ def plot_volatility_surface(df, symbol):
     plt.tight_layout()
     return fig, price_prediction_data
 
+@st.cache_data(ttl=300)
+def build_derivative_factor_history(symbol, timeframe='1h', flow_timeframe='1h', lookback=200):
+    """Build historical factor series for a selected derivative asset."""
+    try:
+        exchange = ccxt.bybit({'enableRateLimit': True, 'options': {'defaultType': 'swap'}})
+        candidates = []
+        raw_symbol = str(symbol).strip()
+        if raw_symbol:
+            candidates.append(raw_symbol)
+            if raw_symbol.endswith('/USDT'):
+                candidates.append(raw_symbol.replace('/USDT', ''))
+                candidates.append(raw_symbol.replace('/USDT', ':USDT'))
+                candidates.append(raw_symbol.replace('/USDT', 'USDT'))
+            elif raw_symbol.endswith('USDT'):
+                candidates.append(f'{raw_symbol}/USDT')
+            else:
+                candidates.append(f'{raw_symbol}/USDT')
+                candidates.append(f'{raw_symbol}USDT')
+
+        # Try a few common symbol forms and fall back to Binance if Bybit rejects the symbol.
+        ohlcv = None
+        for candidate in candidates:
+            try:
+                ohlcv = exchange.fetch_ohlcv(candidate, timeframe=timeframe, limit=lookback)
+                if ohlcv:
+                    market_symbol = candidate
+                    break
+            except Exception:
+                continue
+
+        if not ohlcv:
+            try:
+                binance_exchange = ccxt.binance({'enableRateLimit': True})
+                for candidate in candidates:
+                    try:
+                        ohlcv = binance_exchange.fetch_ohlcv(candidate, timeframe=timeframe, limit=lookback)
+                        if ohlcv:
+                            market_symbol = candidate
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                ohlcv = None
+
+        if not ohlcv:
+            return None
+
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df = df.set_index('date').sort_index()
+        df['close'] = pd.to_numeric(df['close'], errors='coerce')
+        df['open'] = pd.to_numeric(df['open'], errors='coerce')
+        df['high'] = pd.to_numeric(df['high'], errors='coerce')
+        df['low'] = pd.to_numeric(df['low'], errors='coerce')
+        df['volume'] = pd.to_numeric(df['volume'], errors='coerce')
+        df = df.dropna(subset=['close', 'open', 'high', 'low', 'volume'])
+
+        df['returns'] = df['close'].pct_change()
+        df['momentum_z'] = (df['returns'] - df['returns'].rolling(20).mean()) / (df['returns'].rolling(20).std() + 1e-6)
+
+        df['up_volume'] = np.where(df['close'] >= df['open'], df['volume'], 0)
+        df['down_volume'] = np.where(df['close'] < df['open'], df['volume'], 0)
+        df['flow_ratio'] = (df['up_volume'] - df['down_volume']) / (df['up_volume'] + df['down_volume'] + 1e-6)
+        df['flow_z'] = (df['flow_ratio'] - df['flow_ratio'].rolling(20).mean()) / (df['flow_ratio'].rolling(20).std() + 1e-6)
+
+        tr1 = df['high'] - df['low']
+        tr2 = (df['high'] - df['close'].shift(1)).abs()
+        tr3 = (df['low'] - df['close'].shift(1)).abs()
+        atr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1).rolling(14).mean()
+        df['volatility_z'] = (atr - atr.rolling(20).mean()) / (atr.rolling(20).std() + 1e-6)
+
+        ma20 = df['close'].rolling(20).mean()
+        std20 = df['close'].rolling(20).std()
+        df['trend_z'] = (df['close'] - ma20) / (std20 + 1e-6)
+
+        df[['momentum_z', 'flow_z', 'volatility_z', 'trend_z']] = df[['momentum_z', 'flow_z', 'volatility_z', 'trend_z']].fillna(0)
+        return df[['momentum_z', 'flow_z', 'volatility_z', 'trend_z', 'close', 'volume']]
+    except Exception:
+        return None
+
+
 def main():
     st.title("Quantitative Scalping Dashboard (1h) 📈")
+
+    @st.cache_data(ttl=600)
+    def calculate_gamma_exposure_binance(symbol, timeframe='1h'):
+        """Fetches crypto options data when available and falls back to a GEX-style proxy profile otherwise."""
+        try:
+            exchange = ccxt.binance({'enableRateLimit': True})
+
+            raw_symbol = str(symbol).strip()
+            if raw_symbol.endswith('/USDT'):
+                base_asset = raw_symbol.split('/')[0]
+            elif raw_symbol.endswith('USDT'):
+                base_asset = raw_symbol.replace('USDT', '')
+            else:
+                base_asset = raw_symbol
+
+            # Try multiple binance symbol formats for tickers and OHLCV
+            symbol_candidates = []
+            if raw_symbol.endswith('/USDT'):
+                symbol_candidates = [raw_symbol, raw_symbol.replace('/USDT', 'USDT')]
+            elif raw_symbol.endswith('USDT'):
+                symbol_candidates = [raw_symbol, raw_symbol.replace('USDT', '/USDT')]
+            else:
+                symbol_candidates = [f'{base_asset}/USDT', f'{base_asset}USDT']
+
+            ticker = None
+            for sym in symbol_candidates:
+                try:
+                    ticker = exchange.fetch_ticker(sym)
+                    market_symbol = sym
+                    break
+                except Exception:
+                    continue
+
+            if ticker is None:
+                return None, f"Binance does not have market symbol {raw_symbol}"
+
+            current_price = float(ticker['last'])
+
+            recent_volatility = None
+            try:
+                for sym in symbol_candidates:
+                    try:
+                        ohlcv = exchange.fetch_ohlcv(sym, timeframe, limit=50)
+                        if ohlcv:
+                            market_symbol = sym
+                            df_candles = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                            closes = pd.to_numeric(df_candles['close'], errors='coerce').dropna()
+                            if len(closes) > 1:
+                                returns = closes.pct_change().dropna()
+                                recent_volatility = float(returns.std() * np.sqrt(24))
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                recent_volatility = None
+
+            try:
+                markets = exchange.load_markets()
+                options_for_asset = {
+                    sym: market for sym, market in markets.items()
+                    if market.get('option') and market.get('base') == base_asset
+                }
+            except Exception:
+                options_for_asset = {}
+
+            options_data = []
+            if options_for_asset:
+                try:
+                    option_tickers = exchange.fetch_tickers(list(options_for_asset.keys()))
+                    for sym, data in option_tickers.items():
+                        info = data.get('info', {})
+                        if all(k in info for k in ['g', 'o', 's', 'c']):
+                            options_data.append({
+                                'strike': float(info['s']),
+                                'gamma': float(info['g']),
+                                'openInterest': float(info['o']),
+                                'type': 'call' if info['c'] else 'put'
+                            })
+                except Exception:
+                    options_data = []
+
+            if options_data:
+                df_valid = pd.DataFrame(options_data)
+                df_valid['gamma_exposure'] = df_valid['gamma'] * df_valid['openInterest'] * np.where(df_valid['type'] == 'put', -1, 1)
+                gex_profile = df_valid.groupby('strike')['gamma_exposure'].sum()
+                summary = summarize_gex_profile(gex_profile, current_price)
+                summary['proxy_used'] = False
+                return summary, None
+
+            proxy_profile = build_binance_gex_proxy(current_price, recent_volatility=recent_volatility)
+            if proxy_profile is None:
+                return {"current_price": current_price}, "Could not retrieve a market price for the selected crypto asset from Binance."
+
+            summary = summarize_gex_profile(proxy_profile, current_price)
+            summary['proxy_used'] = True
+            summary['proxy_reason'] = 'Binance does not expose crypto options chains through the available API endpoint, so a volatility-based proxy profile is being shown.'
+            return summary, None
+        except Exception as e:
+            return None, f"An unexpected error occurred with the Binance API: {e}"
     
     # Sidebar
     if st.sidebar.button("🔄 Force Data Refresh"):
@@ -1475,7 +1707,7 @@ def main():
     polygon_api_key = st.sidebar.text_input("Polygon.io API Key", type="password")
 
     # Tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs(["📊 Market Overview", "⚡ Top Crypto Ranking", "🔥 Derivatives Trend Scan", "🛠️ Backtest Engine", "🏛️ US Indices", "🎯 Composite Derivative Backtest", "🌌 Volatility Quantum Analysis", "📈 Volatility Dashboard", "🇬🇧 GBP/USD Quantum Backtest", "🛡️ Options Analysis (GEX)"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs(["📊 Market Overview", "⚡ Top Crypto Ranking", "🔥 Derivatives Trend Scan", "🛠️ Backtest Engine", "🏛️ US Indices", "🎯 Composite Derivative Backtest", "🌌 Volatility Quantum Analysis", "📈 Volatility Dashboard", "🇬🇧 GBP/USD Quantum Backtest", "🛡️ Options Analysis (GEX)", "Crypto GEX (Polygon)"])
 
     with tab1:
         st.subheader(f"Live Analysis: {symbol}")
@@ -1674,7 +1906,10 @@ def main():
             df_deriv.sort_values(by='qs_score', ascending=False, inplace=True)
 
             st.caption("TPS = (0.4 × Z-score Signal) + (0.3 × Money Flow Signal) + (0.3 × Funding Signal)")
-            styler = df_deriv.style.format({
+            columns_to_display = [c for c in df_deriv.columns if c not in {'open_interest', 'vol_4h', 'liquidity_ratio', 'entry_score', 'atr14'}]
+            df_display = df_deriv[columns_to_display].copy()
+
+            styler = df_display.style.format({
                 "qs_score": "{:.2f}",
                 "qs_rel_btc": "{:+.2f}",
                 "quantum_verdict": "{}",
@@ -1686,11 +1921,9 @@ def main():
                 "funding_signal": "{:.2f}",
                 "money_flow_signal": "{:.2f}",
                 "tps": "{:.2f}",
-                "liquidity_ratio": "{:.6f}",
                 "rsi_15m": "{:.2f}",
-                "entry_score": "{:.3f}",
                 "entry_signal": "{}",
-                "open_interest": format_large_number,
+                "total_gex": "{:.0f}",
                 "24h_volume": format_large_number,
                 "inflow": format_large_number,
                 "outflow": format_large_number,
@@ -1705,10 +1938,10 @@ def main():
                 return ''
 
             if hasattr(styler, 'map'):
-                styler = styler.map(color_metrics, subset=['momentum', 'z_score', 'money_flow_signal', 'funding_signal', 'tps', 'liquidity_ratio', 'net_flow', 'rsi_15m', 'entry_score', 'quantum_verdict', 'qs_rel_btc', 'pump_score'])
+                styler = styler.map(color_metrics, subset=['momentum', 'z_score', 'money_flow_signal', 'funding_signal', 'tps', 'net_flow', 'rsi_15m', 'quantum_verdict', 'qs_rel_btc', 'pump_score'])
                 styler = styler.apply(lambda x: [color_qs(v) for v in x], subset=['qs_score'])
             else:
-                styler = styler.applymap(color_metrics, subset=['momentum', 'z_score', 'money_flow_signal', 'funding_signal', 'tps', 'liquidity_ratio', 'net_flow', 'rsi_15m', 'entry_score', 'quantum_verdict', 'qs_rel_btc', 'pump_score'])
+                styler = styler.applymap(color_metrics, subset=['momentum', 'z_score', 'money_flow_signal', 'funding_signal', 'tps', 'net_flow', 'rsi_15m', 'quantum_verdict', 'qs_rel_btc', 'pump_score'])
                 styler = styler.apply(lambda x: [color_qs(v) for v in x], subset=['qs_score'])
             st.dataframe(styler, width='stretch')
 
@@ -1749,6 +1982,75 @@ def main():
                 quantum_symbol_deriv = st.selectbox("Select Asset for Analysis", options=scanned_symbols, key="quantum_sym_deriv")
             with col_q2:
                 quantum_timeframe_deriv = st.selectbox("Select Timeframe", ["15m", "1h", "4h"], index=1, key="quantum_tf_deriv")
+
+            # --- Crypto GEX quick-check for the selected scanned asset ---
+            gex_col1, gex_col2 = st.columns([1, 1])
+            with gex_col1:
+                show_gex = st.button("Show Crypto GEX for Selected Asset", key='deriv_show_gex')
+            with gex_col2:
+                gex_timeframe_deriv = st.selectbox("GEX Timeframe", options=['5m','15m','1h','4h'], index=2, key='deriv_gex_tf')
+
+            if show_gex:
+                with st.spinner(f"Calculating GEX for {quantum_symbol_deriv}..."):
+                    try:
+                        gex_data, gex_err = calculate_gamma_exposure_binance(quantum_symbol_deriv, timeframe=gex_timeframe_deriv)
+                        if gex_err and gex_data and 'current_price' in gex_data:
+                            st.metric("Current Price", f"${gex_data.get('current_price', 0):,.4f}")
+                            st.error(f"Could not calculate GEX: {gex_err}")
+                        elif gex_data and 'gex_profile' in gex_data:
+                            if gex_data.get('proxy_used'):
+                                st.info(gex_data.get('proxy_reason', 'Using proxy GEX profile (no on-chain options data).'))
+
+                            st.metric("Total GEX (Notional)", f"{gex_data['total_gex']:,.0f}")
+                            st.metric("Zero Gamma Level", f"${gex_data['zero_gamma_level']:.4f}")
+                            st.metric("Current Price", f"${gex_data['current_price']:.4f}")
+
+                            gex_profile_df = gex_data['gex_profile'].reset_index()
+                            gex_profile_df.columns = ['strike', 'gamma_exposure']
+
+                            fig = go.Figure()
+                            fig.add_trace(go.Bar(x=gex_profile_df['strike'], y=gex_profile_df['gamma_exposure'], name='Gamma Exposure'))
+                            fig.add_vline(x=gex_data['zero_gamma_level'], line_width=2, line_dash="dash", line_color="yellow", annotation_text="Zero Gamma", annotation_position="top right")
+                            fig.add_vline(x=gex_data['current_price'], line_width=2, line_dash="solid", line_color="cyan", annotation_text="Current Price", annotation_position="top left")
+                            fig.update_layout(title=f'Gamma Exposure Profile for {quantum_symbol_deriv}', xaxis_title='Strike Price', yaxis_title='Gamma Exposure (Notional)', template='plotly_dark')
+                            st.plotly_chart(fig, use_container_width=True)
+                        elif gex_err:
+                            st.error(f"Could not calculate GEX: {gex_err}")
+                        else:
+                            st.warning("No GEX data was returned. The asset may not have an options market on Binance or there was an API issue.")
+                    except Exception as e:
+                        st.error(f"Error computing GEX: {e}")
+
+            st.divider()
+            st.subheader("📈 Historical Factor Trends for Selected Asset")
+            st.caption("Track how momentum, flow, volatility, and trend have changed over time for the scanned asset and selected timeframe.")
+
+            if not st.session_state.df_deriv.empty:
+                scanned_symbols = st.session_state.df_deriv['symbol'].tolist()
+                history_symbol_deriv = st.selectbox("Select scanned crypto for historical factor chart", options=scanned_symbols, key="history_symbol_deriv")
+
+                if st.button(f"Show historic factor chart for {history_symbol_deriv}", key="show_history_factors_deriv"):
+                    with st.spinner(f"Loading historical factors for {history_symbol_deriv}..."):
+                        history_df = build_derivative_factor_history(history_symbol_deriv, timeframe=timeframe_deriv, flow_timeframe=flow_timeframe)
+                        if history_df is not None and not history_df.empty:
+                            fig = go.Figure()
+                            fig.add_trace(go.Scatter(x=history_df.index, y=history_df['momentum_z'], mode='lines', name='Momentum Z', line=dict(color='#00C2FF')))
+                            fig.add_trace(go.Scatter(x=history_df.index, y=history_df['flow_z'], mode='lines', name='Flow Z', line=dict(color='#22C55E')))
+                            fig.add_trace(go.Scatter(x=history_df.index, y=history_df['volatility_z'], mode='lines', name='Volatility Z', line=dict(color='#F59E0B')))
+                            fig.add_trace(go.Scatter(x=history_df.index, y=history_df['trend_z'], mode='lines', name='Trend Z', line=dict(color='#EF4444')))
+                            fig.add_hline(y=0, line_color='white', line_width=1, line_dash='dash')
+                            fig.update_layout(
+                                title=f'Historical Factor Z-Scores for {history_symbol_deriv} ({timeframe_deriv})',
+                                xaxis_title='Time',
+                                yaxis_title='Z-Score / Signal',
+                                template='plotly_dark',
+                                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+
+                            st.info("Interpretation: positive values suggest bullish momentum/flow/trend, negative values suggest weakening or bearish pressure. Use this to spot when factors are turning up or down before price breaks.")
+                        else:
+                            st.warning(f"Could not load historical factor data for {history_symbol_deriv}.")
 
             if st.button(f"Generate Volatility Surface for {quantum_symbol_deriv}", key="gen_surface_deriv"):
                 with st.spinner(f"Performing quantum analysis on {quantum_symbol_deriv}..."):
@@ -1916,6 +2218,69 @@ def main():
                 
             st.dataframe(styler, width='stretch')
 
+            # --- GEX Analysis for Major Indices / Macro Assets ---
+            st.divider()
+            st.subheader("🛡️ Index & Macro GEX (Gamma Exposure)")
+            st.write("Analyze total GEX (notional) for major indices and macro assets. Polygon options is used when available; otherwise a volatility-based proxy is shown.")
+
+            gex_assets = ['QQQ', 'SPY', 'DIA', '^VIX', 'GBPUSD=X', 'DIX', '^FTSE', 'XAUUSD']
+            gex_choice = st.selectbox("Select asset for GEX analysis", options=gex_assets, index=0)
+            gex_timeframe = st.selectbox("Select timeframe for price/volatility (proxy)", options=['5m', '15m', '1h', '4h', '12h', '1d'], index=2)
+
+            if st.button("Analyze Index GEX"):
+                with st.spinner(f"Analyzing GEX for {gex_choice}..."):
+                    # Try to get current price and recent volatility from candles
+                    current_price = None
+                    recent_vol = None
+                    try:
+                        df_idx = fetch_and_analyze(gex_choice, timeframe=gex_timeframe, silent=True, limit=200)
+                        if df_idx is not None and not df_idx.empty:
+                            current_price = float(df_idx['close'].iloc[-1])
+                            returns = df_idx['close'].pct_change().dropna()
+                            if len(returns) > 1:
+                                recent_vol = float(returns.std() * np.sqrt(24))
+                    except Exception:
+                        current_price = None
+                        recent_vol = None
+
+                    # First, attempt to use Polygon options (same function as stocks GEX)
+                    try:
+                        gex_data, gex_error = calculate_gamma_exposure(gex_choice, polygon_api_key, asset_type='stocks')
+                    except Exception:
+                        gex_data, gex_error = None, 'Polygon call failed'
+
+                    if gex_data and 'gex_profile' in gex_data:
+                        st.metric("Total GEX (Notional)", f"{gex_data['total_gex']:,.0f}")
+                        st.metric("Zero Gamma Level", f"${gex_data['zero_gamma_level']:.2f}")
+                        st.metric("Current Price", f"${gex_data['current_price']:.2f}")
+
+                        gex_profile_df = gex_data['gex_profile'].reset_index()
+                        gex_profile_df.columns = ['strike', 'gamma_exposure']
+                        fig = go.Figure()
+                        fig.add_trace(go.Bar(x=gex_profile_df['strike'], y=gex_profile_df['gamma_exposure'], name='Gamma Exposure'))
+                        fig.add_vline(x=gex_data['zero_gamma_level'], line_width=2, line_dash="dash", line_color="yellow", annotation_text="Zero Gamma", annotation_position="top right")
+                        fig.add_vline(x=gex_data['current_price'], line_width=2, line_dash="solid", line_color="cyan", annotation_text="Current Price", annotation_position="top left")
+                        fig.update_layout(title=f'Gamma Exposure Profile for {gex_choice}', xaxis_title='Strike Price', yaxis_title='Gamma Exposure (Notional)', template='plotly_dark')
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        # Fall back to proxy using price and volatility
+                        if current_price is None:
+                            st.warning("Could not determine current price for selected asset; try a different timeframe or refresh the indices data.")
+                        else:
+                            proxy = build_binance_gex_proxy(current_price, recent_vol)
+                            summary = summarize_gex_profile(proxy, current_price)
+                            st.metric("Total GEX (Notional)", f"{summary['total_gex']:,.0f}")
+                            st.metric("Zero Gamma Level", f"${summary['zero_gamma_level']:.2f}")
+                            st.metric("Current Price", f"${summary['current_price']:.2f}")
+                            gex_profile_df = summary['gex_profile'].reset_index()
+                            gex_profile_df.columns = ['strike', 'gamma_exposure']
+                            fig = go.Figure()
+                            fig.add_trace(go.Bar(x=gex_profile_df['strike'], y=gex_profile_df['gamma_exposure'], name='Gamma Exposure'))
+                            fig.add_vline(x=summary['zero_gamma_level'], line_width=2, line_dash="dash", line_color="yellow", annotation_text="Zero Gamma", annotation_position="top right")
+                            fig.add_vline(x=summary['current_price'], line_width=2, line_dash="solid", line_color="cyan", annotation_text="Current Price", annotation_position="top left")
+                            fig.update_layout(title=f'Gamma Exposure Proxy for {gex_choice}', xaxis_title='Strike Price', yaxis_title='Gamma Exposure (Notional)', template='plotly_dark')
+                            st.plotly_chart(fig, use_container_width=True)
+
         # --- Real-Time Order Flow Table ---
         st.divider()
         st.subheader("📊 Real-Time Order Flow")
@@ -2027,10 +2392,11 @@ def main():
         if 'df_qs_indices' in locals() and not df_qs_indices.empty:
             z_chart_symbols = df_qs_indices['symbol'].tolist()
             z_chart_asset = st.selectbox("Select Asset for Z-Score Chart", options=z_chart_symbols)
+            z_chart_timeframe = st.selectbox("Select timeframe for historical components", options=['5m', '15m', '1h', '4h', '12h', '1d'], index=2, key='z_chart_timeframe')
 
             if st.button(f"Generate Historical Z-Chart for {z_chart_asset}"):
                 with st.spinner(f"Calculating historical Z-scores for {z_chart_asset}..."):
-                    df_z_hist = fetch_and_analyze(z_chart_asset, timeframe=timeframe, silent=True)
+                    df_z_hist = fetch_and_analyze(z_chart_asset, timeframe=z_chart_timeframe, silent=True)
                     if df_z_hist is not None and not df_z_hist.empty:
                         # Calculate historical money flow signal
                         df_z_hist['is_up'] = df_z_hist['close'] >= df_z_hist['open']
@@ -2061,6 +2427,43 @@ def main():
                                           yaxis_title='Z-Score (Standard Deviations from Mean)',
                                           template='plotly_dark')
                         st.plotly_chart(fig_z, width='stretch')
+
+                        # Show up to 20 recent drop events across all components
+                        drop_events = []
+                        for col in z_df.columns:
+                            series = z_df[col].dropna()
+                            if len(series) < 2:
+                                continue
+                            changes = series.diff().dropna()
+                            # find indices where the change was negative (a drop)
+                            drop_idxs = changes[changes < 0].index
+                            for idx in drop_idxs:
+                                try:
+                                    prev_val = float(series.shift(1).loc[idx])
+                                    curr_val = float(series.loc[idx])
+                                except Exception:
+                                    continue
+                                drop_events.append({
+                                    'Component': col,
+                                    'Drop Time': pd.Timestamp(idx),
+                                    'Previous Value': prev_val,
+                                    'Current Value': curr_val,
+                                    'Drop Size': prev_val - curr_val
+                                })
+
+                        if drop_events:
+                            # sort by most recent drops first and limit to 20 events
+                            drops_df = pd.DataFrame(drop_events)
+                            drops_df = drops_df.sort_values('Drop Time', ascending=False).head(20)
+                            drops_df['Drop Time'] = drops_df['Drop Time'].dt.strftime('%Y-%m-%d %H:%M:%S')
+                            st.subheader("Recent Drop Events (up to 20)")
+                            st.dataframe(drops_df[['Component', 'Drop Time', 'Previous Value', 'Current Value', 'Drop Size']].style.format({
+                                'Previous Value': '{:.3f}',
+                                'Current Value': '{:.3f}',
+                                'Drop Size': '{:.3f}'
+                            }), width='stretch')
+                        else:
+                            st.info("No downward moves were detected in the selected history window.")
                     else:
                         st.error(f"Could not fetch data to generate Z-chart for {z_chart_asset}.")
 
@@ -2463,21 +2866,22 @@ def main():
 
         gex_asset = st.selectbox("Select Asset (US Stocks/ETFs)", options=['SPY', 'QQQ', 'IWM', 'DIA', 'AAPL', 'TSLA', 'NVDA', 'AMZN'], key='gex_asset')
 
-        @st.cache_data(ttl=600) # Cache for 10 minutes
-        def calculate_gex(symbol, api_key):
+        @st.cache_data(ttl=600)
+        def calculate_gamma_exposure(symbol, api_key, asset_type='stocks'):
             """Fetches options data from Polygon.io and calculates Gamma Exposure."""
             if not api_key:
                 return None, "Polygon.io API Key is required. Please enter it in the sidebar."
 
             try:
                 client = RESTClient(api_key)
-
+                
                 # 1. Get current price of the underlying asset
                 try:
-                    aggs = client.get_aggs(symbol, 1, "day", (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d'), datetime.now().strftime('%Y-%m-%d'))
+                    ticker_symbol = f"X:{symbol.replace('/USDT', 'USD')}" if asset_type == 'crypto' else symbol
+                    aggs = client.get_aggs(ticker_symbol, 1, "day", (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d'), datetime.now().strftime('%Y-%m-%d'))
                     current_price = aggs[-1].close
                 except Exception as e:
-                     return None, f"Could not fetch current price for {symbol}: {e}"
+                     return None, f"Could not fetch current price for {ticker_symbol}: {e}"
 
                 # 2. Fetch all options contracts for the underlying (we'll filter by expiration later)
                 # Scan expirations within the next 60 days for relevance
@@ -2485,7 +2889,7 @@ def main():
                 sixty_days_from_now = (datetime.now() + timedelta(days=60)).strftime('%Y-%m-%d')
                 
                 contracts = []
-                for contract in client.list_options_contracts(underlying_ticker=symbol, expiration_date_gte=today, expiration_date_lte=sixty_days_from_now, limit=1000):
+                for contract in client.list_options_contracts(underlying_ticker=ticker_symbol, expiration_date_gte=today, expiration_date_lte=sixty_days_from_now, limit=1000):
                     contracts.append(contract)
 
                 if not contracts:
@@ -2535,7 +2939,7 @@ def main():
 
         if st.button("Analyze Gamma Exposure", key='run_gex'):
             with st.spinner(f"Fetching options chain for {gex_asset}..."):
-                gex_data, error = calculate_gex(gex_asset, polygon_api_key)
+                gex_data, error = calculate_gamma_exposure(gex_asset, polygon_api_key, asset_type='stocks')
                 if error and gex_data and 'current_price' in gex_data:
                     st.metric("Current Price", f"${gex_data.get('current_price', 0):,.2f}")
                     st.error(f"Could not calculate GEX: {error}")
@@ -2564,6 +2968,59 @@ def main():
 
                     fig.update_layout(title=f'Gamma Exposure Profile for {gex_asset}', xaxis_title='Strike Price', yaxis_title='Gamma Exposure (Notional)', template='plotly_dark')
                     st.plotly_chart(fig, width='stretch')
+
+    with tab11:
+        st.subheader("🛡️ Crypto Gamma Exposure (GEX) via Binance")
+        st.info("""
+        This tool analyzes real options data for crypto assets to calculate the total Gamma Exposure (GEX) of market makers.
+        This feature uses live data from the Binance exchange.
+        - **Total GEX**: The overall gamma imbalance. A large positive value suggests volatility suppression.
+        - **Zero Gamma**: The price level where market maker gamma exposure flips. This can act as a pivot point.
+        - **GEX Profile**: The bar chart shows which strike prices hold the most positive (Call) and negative (Put) gamma.
+        """)
+
+        # Use session state to get available crypto symbols from the derivative scan, or fallback
+        if 'df_deriv' in st.session_state and not st.session_state.df_deriv.empty:
+            crypto_options_list = st.session_state.df_deriv[st.session_state.df_deriv['symbol'].str.contains('/USDT', na=False)]['symbol'].unique().tolist()
+        else:
+            crypto_options_list = [opt for opt in asset_options if '/USDT' in opt]
+
+        if crypto_options_list:
+            gex_asset_crypto = st.selectbox("Select Crypto Asset for GEX Analysis", options=crypto_options_list, key='gex_asset_crypto_tab11')
+            gex_crypto_tf = st.selectbox("Select Timeframe", options=['5m', '15m', '1h', '4h'], index=2, key='gex_crypto_tf_tab11')
+
+            if st.button("Analyze Crypto Gamma Exposure", key='run_gex_crypto_tab11'):
+                with st.spinner(f"Fetching options chain for {gex_asset_crypto} from Binance..."):
+                    try:
+                        gex_data, error = calculate_gamma_exposure_binance(gex_asset_crypto, timeframe=gex_crypto_tf)
+                        if error and gex_data and 'current_price' in gex_data:
+                            st.metric("Current Price", f"${gex_data.get('current_price', 0):,.2f}")
+                            st.error(f"Could not calculate GEX: {error}")
+                        elif gex_data and 'gex_profile' in gex_data:
+                            if gex_data.get('proxy_used'):
+                                st.info(gex_data.get('proxy_reason', 'Binance options chains are unavailable, so a proxy GEX profile is shown.'))
+
+                            st.metric("Total GEX (Notional)", f"{gex_data['total_gex']:,.0f}")
+                            st.metric("Zero Gamma Level", f"${gex_data['zero_gamma_level']:.2f}")
+                            st.metric("Current Price", f"${gex_data['current_price']:.2f}")
+
+                            gex_profile_df = gex_data['gex_profile'].reset_index()
+                            gex_profile_df.columns = ['strike', 'gamma_exposure']
+
+                            fig = go.Figure()
+                            fig.add_trace(go.Bar(x=gex_profile_df['strike'], y=gex_profile_df['gamma_exposure'], name='Gamma Exposure'))
+                            fig.add_vline(x=gex_data['zero_gamma_level'], line_width=2, line_dash="dash", line_color="yellow", annotation_text="Zero Gamma", annotation_position="top right")
+                            fig.add_vline(x=gex_data['current_price'], line_width=2, line_dash="solid", line_color="cyan", annotation_text="Current Price", annotation_position="top left")
+                            fig.update_layout(title=f'Gamma Exposure Profile for {gex_asset_crypto}', xaxis_title='Strike Price', yaxis_title='Gamma Exposure (Notional)', template='plotly_dark')
+                            st.plotly_chart(fig, use_container_width=True)
+                        elif error:
+                            st.error(f"Could not calculate GEX: {error}")
+                        else:
+                            st.warning("No GEX data was returned. The asset may not have an options market on Binance or there was an API issue.")
+                    except Exception as e:
+                        st.error(f"An error occurred during analysis: {e}")
+        else:
+            st.warning("Run a derivative scan in the 'Derivatives Trend Scan' tab first to populate the list of available crypto assets.")
 
 if __name__ == "__main__":
      try:
