@@ -63,6 +63,55 @@ def summarize_gex_profile(gex_profile, current_price):
     }
 
 
+def get_intraday_money_flow(symbol, interval='5m', period='1d'):
+    """Get today's intraday inflow/outflow notional for an ETF based on up vs down candles."""
+    try:
+        data = yf.download(symbol, period=period, interval=interval, progress=False, auto_adjust=False)
+        if data is None or data.empty:
+            return None
+
+        df = data.reset_index()
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
+        df.columns = [str(col).strip().lower() for col in df.columns]
+
+        if 'datetime' in df.columns:
+            df = df.rename(columns={'datetime': 'date'})
+        elif 'date' in df.columns:
+            df = df.rename(columns={'date': 'date'})
+        elif 'index' in df.columns:
+            df = df.rename(columns={'index': 'date'})
+
+        if 'close' not in df.columns or 'open' not in df.columns or 'volume' not in df.columns:
+            return None
+
+        df['date'] = pd.to_datetime(df['date'], utc=True, errors='coerce')
+        df = df.dropna(subset=['date']).sort_values('date')
+        df['is_up'] = df['close'] >= df['open']
+        df['money_flow'] = df['close'] * df['volume']
+
+        df['cumulative_inflow'] = np.where(df['is_up'], df['money_flow'], np.nan)
+        df['cumulative_outflow'] = np.where(~df['is_up'], df['money_flow'], np.nan)
+        df['cumulative_inflow'] = pd.Series(df['cumulative_inflow']).cumsum().fillna(0)
+        df['cumulative_outflow'] = pd.Series(df['cumulative_outflow']).cumsum().fillna(0)
+        df['cumulative_net_flow'] = df['cumulative_inflow'] - df['cumulative_outflow']
+
+        inflow = float(df.loc[df['is_up'], 'money_flow'].sum())
+        outflow = float(df.loc[~df['is_up'], 'money_flow'].sum())
+        net_flow = inflow - outflow
+        return {
+            'symbol': symbol,
+            'inflow': inflow,
+            'outflow': outflow,
+            'net_flow': net_flow,
+            'flow_ratio': net_flow / (inflow + outflow) if (inflow + outflow) > 0 else 0.0,
+            'bars': int(len(df)),
+            'history': df[['date', 'open', 'close', 'volume', 'is_up', 'money_flow', 'cumulative_net_flow']].copy()
+        }
+    except Exception:
+        return None
+
+
 @st.cache_data
 def fetch_fear_and_greed_history():
     """
@@ -87,8 +136,17 @@ def fetch_and_analyze(symbol='BTC/USDT', timeframe='1h', start_date=None, end_da
     Fetches Crypto Data (via ccxt/Binance) and calculates Multi-Strategy Factors.
     """
     try:
-        stock_index_symbols = ['SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB', 'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'LLY', 'JPM', 'GBPUSD=X', '^FTSE', 'XAUUSD=X']
-        is_stock_index = symbol in stock_index_symbols
+        raw_symbol = str(symbol).strip()
+        symbol_aliases = {
+            'XAUUSD': 'GC=F',
+            'XAUUSD=X': 'GC=F',
+            'XAGUSD': 'SI=F',
+            'XAGUSD=X': 'SI=F',
+        }
+        symbol = symbol_aliases.get(raw_symbol.upper(), raw_symbol)
+
+        stock_index_symbols = ['SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB', 'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'LLY', 'JPM', 'GBPUSD=X', '^FTSE', 'XAUUSD', 'XAUUSD=X', 'GC=F', 'GLD']
+        is_stock_index = symbol in stock_index_symbols or raw_symbol in stock_index_symbols or raw_symbol.upper() in stock_index_symbols
 
         # Handle Symbol Formatting (e.g., BTC-USD -> BTC/USDT for Binance)
         if not is_stock_index and symbol.endswith('-USD'):
@@ -2298,7 +2356,7 @@ def main():
             flow_tf = st.selectbox("Select Order Flow Timeframe", options=['5m', '15m', '1h', '4h'], index=2)
         with c2:
             flow_candles = st.number_input("Number of Candles to Analyze", min_value=50, max_value=1000, value=500, step=50)
-        
+
         if st.button("Refresh Order Flow"):
             with st.spinner(f"Calculating order flow for {flow_tf} timeframe..."):
                 indices = ['SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB']
@@ -2333,6 +2391,43 @@ def main():
             styler_flow = styler_flow.background_gradient(subset=['Net Flow'], cmap='RdYlGn')
             styler_flow = styler_flow.bar(subset=['Money Flow Signal'], align='zero', color=['#d65f5f', '#5fba7d'])
             st.dataframe(styler_flow, width='stretch')
+
+        st.divider()
+        st.subheader("💰 Daily ETF Inflow / Outflow (SPY, QQQ, DIA)")
+        st.caption("This section shows intraday inflow and outflow for the major index ETFs across 5m, 15m, 1h, and 4h candles so you can monitor real-time market momentum.")
+
+        timeframes = [('5m', '5m'), ('15m', '15m'), ('1h', '1h'), ('4h', '4h')]
+        daily_flow_rows = []
+        for symbol in ['SPY', 'QQQ', 'DIA']:
+            row = {'Symbol': symbol}
+            for label, interval in timeframes:
+                flow_summary = get_intraday_money_flow(symbol, interval=interval, period='1d')
+                if flow_summary:
+                    row[f'{label} Inflow'] = flow_summary['inflow']
+                    row[f'{label} Outflow'] = flow_summary['outflow']
+                    row[f'{label} Net Flow'] = flow_summary['net_flow']
+                else:
+                    row[f'{label} Inflow'] = 0.0
+                    row[f'{label} Outflow'] = 0.0
+                    row[f'{label} Net Flow'] = 0.0
+            daily_flow_rows.append(row)
+
+        if daily_flow_rows:
+            daily_flow_df = pd.DataFrame(daily_flow_rows)
+            # Fill NaNs with 0 only for numeric columns to avoid errors with object columns
+            for col in daily_flow_df.select_dtypes(include=np.number).columns:
+                daily_flow_df[col] = daily_flow_df[col].fillna(0)
+
+            sort_col = '5m Net Flow'
+            if sort_col in daily_flow_df.columns:
+                daily_flow_df = daily_flow_df.sort_values(by=sort_col, ascending=False)
+            flow_columns = [col for col in daily_flow_df.columns if col != 'Symbol']
+            daily_flow_styler = daily_flow_df.style.format({col: format_large_number for col in flow_columns})
+            daily_flow_styler = daily_flow_styler.background_gradient(subset=['5m Net Flow', '15m Net Flow', '1h Net Flow', '4h Net Flow'], cmap='RdYlGn')
+            st.dataframe(daily_flow_styler, width='stretch')
+
+        else:
+            st.info("Daily ETF flow data is currently unavailable.")
 
         # --- QS Score Comparison for SPY, QQQ, DIA ---
         st.divider()
@@ -2461,11 +2556,11 @@ def main():
                                 })
 
                         if drop_events:
-                            # sort by most recent drops first and limit to 20 events
+                            # sort by most recent drops first and limit to 50 events
                             drops_df = pd.DataFrame(drop_events)
-                            drops_df = drops_df.sort_values('Drop Time', ascending=False).head(20)
+                            drops_df = drops_df.sort_values('Drop Time', ascending=False).head(50)
                             drops_df['Drop Time'] = drops_df['Drop Time'].dt.strftime('%Y-%m-%d %H:%M:%S')
-                            st.subheader("Recent Drop Events (up to 20)")
+                            st.subheader("Recent Drop Events (up to 50)")
                             st.dataframe(drops_df[['Component', 'Drop Time', 'Previous Value', 'Current Value', 'Drop Size']].style.format({
                                 'Previous Value': '{:.3f}',
                                 'Current Value': '{:.3f}',
