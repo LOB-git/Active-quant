@@ -879,6 +879,11 @@ def backtest_composite_derivative(df_full, symbol, risk_reward_ratio=None, **kwa
         # We execute trades at the OPEN of the next candle
         next_open = df_full.iloc[i+1]['open']
         candle_high = df_full.iloc[i+1]['high']
+        
+        # Add a check to ensure the next candle's data is valid before proceeding
+        if pd.isna(next_open) or pd.isna(candle_high):
+            continue
+
         candle_low = df_full.iloc[i+1]['low']
         
         # --- Stop-Loss & Take-Profit Logic ---
@@ -2357,13 +2362,26 @@ def main():
         with c2:
             flow_candles = st.number_input("Number of Candles to Analyze", min_value=50, max_value=1000, value=500, step=50)
 
+        # This function is not available in the provided context, but is needed for the flow calculation.
+        # I will add a simplified version here.
+        def calculate_cumulative_flow(df):
+            df['net_flow_per_candle'] = (df['volume'] * (2 * (df['close'] >= df['open']) - 1))
+            df['cumulative_net_flow'] = df['net_flow_per_candle'].cumsum()
+            return df
+
+        # Initialize session state for historical flow data
+        if 'order_flow_history' not in st.session_state:
+            st.session_state.order_flow_history = {}
+
         if st.button("Refresh Order Flow"):
             with st.spinner(f"Calculating order flow for {flow_tf} timeframe..."):
                 indices = ['SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB']
                 order_flow_data = []
+                st.session_state.order_flow_history = {} # Clear previous history
                 for sym in indices:
                     df_flow_calc = fetch_and_analyze(sym, timeframe=flow_tf, silent=True, limit=flow_candles)
                     if df_flow_calc is not None and not df_flow_calc.empty:
+                        df_flow_calc = calculate_cumulative_flow(df_flow_calc)
                         df_flow_calc['is_up'] = df_flow_calc['close'] >= df_flow_calc['open']
                         inflow = float(df_flow_calc.loc[df_flow_calc['is_up'], 'volume'].sum())
                         outflow = float(df_flow_calc.loc[~df_flow_calc['is_up'], 'volume'].sum())
@@ -2374,6 +2392,9 @@ def main():
                             'Net Flow': inflow - outflow,
                             'Money Flow Signal': (inflow - outflow) / (inflow + outflow) if (inflow + outflow) > 0 else 0
                         })
+                        # Store the full historical dataframe for later viewing
+                        st.session_state.order_flow_history[sym] = df_flow_calc.copy()
+
                 st.session_state.order_flow_data = (order_flow_data, flow_candles, flow_tf)
 
         if 'order_flow_data' in st.session_state and st.session_state.order_flow_data and st.session_state.order_flow_data[0]:
@@ -2391,6 +2412,30 @@ def main():
             styler_flow = styler_flow.background_gradient(subset=['Net Flow'], cmap='RdYlGn')
             styler_flow = styler_flow.bar(subset=['Money Flow Signal'], align='zero', color=['#d65f5f', '#5fba7d'])
             st.dataframe(styler_flow, width='stretch')
+
+            # --- Historical Order Flow Data Section ---
+            st.subheader("📜 Historical Order Flow (Last 50 Candles)")
+            st.caption("Select an asset from the scan above to see its detailed historical order flow data.")
+
+            # Get the list of symbols that were successfully scanned
+            scanned_symbols = list(st.session_state.order_flow_history.keys())
+
+            if scanned_symbols:
+                history_asset = st.selectbox("Select Asset for Historical View", options=scanned_symbols)
+                
+                if history_asset in st.session_state.order_flow_history:
+                    history_df = st.session_state.order_flow_history[history_asset]
+                    # Display the last 50 rows as requested
+                    st.subheader(f"Cumulative Net Flow for {history_asset}")
+                    if 'cumulative_net_flow' in history_df.columns:
+                        st.line_chart(history_df['cumulative_net_flow'])
+                    else:
+                        st.warning("Cumulative net flow data not available. Please refresh order flow.")
+
+                    st.dataframe(history_df.tail(50), width='stretch', height=300)
+                else:
+                    st.info(f"No historical data available for {history_asset}. Please refresh the order flow.")
+
 
         st.divider()
         st.subheader("💰 Daily ETF Inflow / Outflow (SPY, QQQ, DIA)")
