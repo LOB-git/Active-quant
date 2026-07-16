@@ -66,7 +66,8 @@ def summarize_gex_profile(gex_profile, current_price):
 def get_intraday_money_flow(symbol, interval='5m', period='1d'):
     """Get today's intraday inflow/outflow notional for an ETF based on up vs down candles."""
     try:
-        data = yf.download(symbol, period=period, interval=interval, progress=False, auto_adjust=False)
+        yf_symbol = 'BTC-USD' if symbol == 'BTC/USD' else symbol
+        data = yf.download(yf_symbol, period=period, interval=interval, progress=False, auto_adjust=False)
         if data is None or data.empty:
             return None
 
@@ -142,6 +143,7 @@ def fetch_and_analyze(symbol='BTC/USDT', timeframe='1h', start_date=None, end_da
             'XAUUSD=X': 'GC=F',
             'XAGUSD': 'SI=F',
             'XAGUSD=X': 'SI=F',
+            'BTC/USD': 'BTC/USDT',
         }
         symbol = symbol_aliases.get(raw_symbol.upper(), raw_symbol)
 
@@ -769,6 +771,7 @@ def backtest_strategy(df, symbol, start_hour=0, end_hour=24, rsi_lower=30, rsi_u
         "max_drawdown": max_drawdown,
         "history": trade_history
     }
+
 
 def get_quantum_signal_for_candle(df_slice):
     """
@@ -1775,9 +1778,9 @@ def main():
     polygon_api_key = st.sidebar.text_input("Polygon.io API Key", type="password")
 
     # Tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs(["📊 Market Overview", "⚡ Top Crypto Ranking", "🔥 Derivatives Trend Scan", "🛠️ Backtest Engine", "🏛️ US Indices", "🎯 Composite Derivative Backtest", "🌌 Volatility Quantum Analysis", "📈 Volatility Dashboard", "🇬🇧 GBP/USD Quantum Backtest", "🛡️ Options Analysis (GEX)", "Crypto GEX (Polygon)"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13 = st.tabs(["📊 Market Overview", "⚡ Top Crypto Ranking", "🔥 Derivatives Trend Scan", "🛠️ Backtest Engine", "🏛️ US Indices", "🎯 Composite Derivative Backtest", "🌌 Volatility Quantum Analysis", "📈 Volatility Dashboard", "🇬🇧 GBP/USD Quantum Backtest", "🛡️ Options Analysis (GEX)", "Crypto GEX (Polygon)", "🆕 Derivative Crypto", "📢 Index Spike Alert"])
 
-    with tab1:
+    with tab1: # This is the "Market Overview" tab
         st.subheader(f"Live Analysis: {symbol}")
         if st.button("Analyze Current Market"):
             df = fetch_and_analyze(symbol)
@@ -1818,10 +1821,7 @@ def main():
                     "futures_24h_vol": format_large_number
                 })
                 
-                if hasattr(styler, 'map'):
-                    styler = styler.map(color_metrics, subset=['momentum', 'funding_rate'])
-                else:
-                    styler = styler.applymap(color_metrics, subset=['momentum', 'funding_rate'])
+                styler = styler.map(color_metrics, subset=['momentum', 'funding_rate'])
                     
                 styler = styler.background_gradient(subset=['futures_12h_vol', 'futures_24h_vol'], cmap='Blues')
 
@@ -1998,12 +1998,8 @@ def main():
                 "net_flow": format_large_number
             })
 
-            def color_qs(val):
-                if val > 2: return 'background-color: #0a8a0a; color: white' # Very Strong
-                if val > 1: return 'background-color: #90ee90' # Strong
-                if val < -2: return 'background-color: #a52a2a; color: white' # Very Weak
-                if val < -1: return 'background-color: #f08080' # Weak
-                return ''
+            # This check is now redundant as we are enforcing .map, but left for context
+            # on how it was handled previously.
 
             if hasattr(styler, 'map'):
                 styler = styler.map(color_metrics, subset=['momentum', 'z_score', 'money_flow_signal', 'funding_signal', 'tps', 'net_flow', 'rsi_15m', 'quantum_verdict', 'qs_rel_btc', 'pump_score'])
@@ -2011,6 +2007,13 @@ def main():
             else:
                 styler = styler.applymap(color_metrics, subset=['momentum', 'z_score', 'money_flow_signal', 'funding_signal', 'tps', 'net_flow', 'rsi_15m', 'quantum_verdict', 'qs_rel_btc', 'pump_score'])
                 styler = styler.apply(lambda x: [color_qs(v) for v in x], subset=['qs_score'])
+            
+            def color_qs(val):
+                if val > 2: return 'background-color: #0a8a0a; color: white' # Very Strong
+                if val > 1: return 'background-color: #90ee90' # Strong
+                if val < -2: return 'background-color: #a52a2a; color: white' # Very Weak
+                if val < -1: return 'background-color: #f08080' # Weak
+                return ''
             st.dataframe(styler, width='stretch')
 
             # --- Display Top 10 Pump Score Assets ---
@@ -2188,10 +2191,7 @@ def main():
                         "profit_factor": "{:.2f}"
                     })
                     
-                    if hasattr(styler, 'map'):
-                        styler = styler.map(color_metrics, subset=['roi'])
-                    else:
-                        styler = styler.applymap(color_metrics, subset=['roi'])
+                    styler = styler.map(color_metrics, subset=['roi'])
                         
                     st.dataframe(styler)
 
@@ -2279,10 +2279,7 @@ def main():
                 "Breadth %": "{:.0%}"
             })
             
-            if hasattr(styler, 'map'):
-                styler = styler.map(color_metrics, subset=['Momentum', 'Z-Score', 'Flow Z-Score', 'Signal Score', 'Breadth %'])
-            else:
-                styler = styler.applymap(color_metrics, subset=['Momentum', 'Z-Score', 'Flow Z-Score', 'Signal Score', 'Breadth %'])
+            styler = styler.map(color_metrics, subset=['Momentum', 'Z-Score', 'Flow Z-Score', 'Signal Score', 'Breadth %'])
                 
             st.dataframe(styler, width='stretch')
 
@@ -2438,12 +2435,12 @@ def main():
 
 
         st.divider()
-        st.subheader("💰 Daily ETF Inflow / Outflow (SPY, QQQ, DIA)")
-        st.caption("This section shows intraday inflow and outflow for the major index ETFs across 5m, 15m, 1h, and 4h candles so you can monitor real-time market momentum.")
+        st.subheader("💰 Daily ETF Inflow / Outflow (SPY, QQQ, DIA, BTC/USD)")
+        st.caption("This section shows intraday inflow and outflow for the major index ETFs and BTC/USD across 5m, 15m, 1h, and 4h candles so you can monitor real-time market momentum.")
 
         timeframes = [('5m', '5m'), ('15m', '15m'), ('1h', '1h'), ('4h', '4h')]
         daily_flow_rows = []
-        for symbol in ['SPY', 'QQQ', 'DIA']:
+        for symbol in ['SPY', 'QQQ', 'DIA', 'BTC/USD']:
             row = {'Symbol': symbol}
             for label, interval in timeframes:
                 flow_summary = get_intraday_money_flow(symbol, interval=interval, period='1d')
@@ -2479,29 +2476,34 @@ def main():
         st.subheader("Macro Quant Strength (QS) Comparison")
         st.caption("This table compares major indices and currency pairs using a relative strength model. A higher score indicates stronger performance versus the group.")
 
-        qs_indices_data = []
         indices_for_qs = ['SPY', 'QQQ', 'DIA', 'DX-Y.NYB', '^FTSE', 'GBPUSD=X', 'XAUUSD']
-        for sym in indices_for_qs:
-            df_idx_qs = fetch_and_analyze(sym, timeframe=timeframe, silent=True)
-            if df_idx_qs is not None and not df_idx_qs.empty:
-                current = df_idx_qs.iloc[-1]
-                # Calculate money flow signal (inflow vs outflow)
-                df_idx_qs['is_up'] = df_idx_qs['close'] >= df_idx_qs['open']
-                inflow = float(df_idx_qs.loc[df_idx_qs['is_up'], 'volume'].sum())
-                outflow = float(df_idx_qs.loc[~df_idx_qs['is_up'], 'volume'].sum())
-                total_flow = inflow + outflow
-                money_flow_signal = (inflow - outflow) / total_flow if total_flow > 0 else 0.0
+        if st.button("Refresh Macro QS Comparison"):
+            qs_indices_data = []
+            with st.spinner("Fetching macro comparison data..."):
+                for sym in indices_for_qs:
+                    df_idx_qs = fetch_and_analyze(sym, timeframe=timeframe, silent=True)
+                    if df_idx_qs is not None and not df_idx_qs.empty:
+                        current = df_idx_qs.iloc[-1]
+                        df_idx_qs['is_up'] = df_idx_qs['close'] >= df_idx_qs['open']
+                        inflow = float(df_idx_qs.loc[df_idx_qs['is_up'], 'volume'].sum())
+                        outflow = float(df_idx_qs.loc[~df_idx_qs['is_up'], 'volume'].sum())
+                        total_flow = inflow + outflow
+                        qs_indices_data.append({
+                            'symbol': sym,
+                            'momentum': current.get('momentum', 0.0),
+                            'money_flow_signal': (inflow - outflow) / total_flow if total_flow > 0 else 0.0,
+                            'atr14': current.get('atr14', 0.0),
+                            'z_score_raw': current.get('z_score', 0.0)
+                        })
 
-                qs_indices_data.append({
-                    'symbol': sym,
-                    'momentum': current.get('momentum', 0.0),
-                    'money_flow_signal': money_flow_signal,
-                    'atr14': current.get('atr14', 0.0),
-                    'z_score_raw': current.get('z_score', 0.0) # Price vs BBands
-                })
-        
-        if len(qs_indices_data) >= 3: # Check if we have at least 3 to compare
-            df_qs_indices = pd.DataFrame(qs_indices_data)
+            if len(qs_indices_data) >= 3:
+                st.session_state['macro_qs_data'] = pd.DataFrame(qs_indices_data)
+            else:
+                st.session_state['macro_qs_data'] = pd.DataFrame()
+                st.warning("Could not fetch enough data for the Macro QS comparison.")
+
+        df_qs_indices = st.session_state.get('macro_qs_data', pd.DataFrame()).copy()
+        if not df_qs_indices.empty:
             
             # Calculate Z-Scores relative to each other
             df_qs_indices['z_momentum'] = (df_qs_indices['momentum'] - df_qs_indices['momentum'].mean()) / df_qs_indices['momentum'].std()
@@ -2531,67 +2533,85 @@ def main():
 
             st.dataframe(styler_qs, width='stretch')
         else:
-            st.warning("Could not fetch enough data for the Macro QS comparison.")
+            st.info("Click 'Refresh Macro QS Comparison' to load the macro comparison basket.")
 
         # --- Historical Z-Score Chart ---
         st.divider()
         st.subheader("Historical Z-Score Component Analysis")
         st.caption("This chart shows the historical Z-scores for each component of the QS score for a single asset. This helps identify which factors are strengthening or weakening over time. A value of +2 means the factor is 2 standard deviations above its own recent history.")
 
-        if 'df_qs_indices' in locals() and not df_qs_indices.empty:
-            z_chart_symbols = df_qs_indices['symbol'].tolist()
+        z_chart_symbols = ['BTC/USD'] + (df_qs_indices['symbol'].tolist() if not df_qs_indices.empty else indices_for_qs)
+        if z_chart_symbols:
             z_chart_asset = st.selectbox("Select Asset for Z-Score Chart", options=z_chart_symbols)
             z_chart_timeframe = st.selectbox("Select timeframe for historical components", options=['5m', '15m', '1h', '4h', '12h', '1d'], index=2, key='z_chart_timeframe')
 
+            z_chart_config = (z_chart_asset, z_chart_timeframe)
             if st.button(f"Generate Historical Z-Chart for {z_chart_asset}"):
                 with st.spinner(f"Calculating historical Z-scores for {z_chart_asset}..."):
                     df_z_hist = fetch_and_analyze(z_chart_asset, timeframe=z_chart_timeframe, silent=True)
-                    if df_z_hist is not None and not df_z_hist.empty:
-                        # Calculate historical money flow signal
-                        df_z_hist['is_up'] = df_z_hist['close'] >= df_z_hist['open']
-                        inflow = df_z_hist['volume'].where(df_z_hist['is_up'], 0)
-                        outflow = df_z_hist['volume'].where(~df_z_hist['is_up'], 0)
-                        rolling_inflow = inflow.rolling(window=20).sum()
-                        rolling_outflow = outflow.rolling(window=20).sum()
-                        df_z_hist['money_flow_signal'] = (rolling_inflow - rolling_outflow) / (rolling_inflow + rolling_outflow)
+                if df_z_hist is not None and not df_z_hist.empty:
+                    st.session_state['historical_z_chart_data'] = df_z_hist
+                    st.session_state['historical_z_chart_config'] = z_chart_config
+                else:
+                    st.error(f"Could not fetch data to generate Z-chart for {z_chart_asset}.")
 
-                        # Define a function to calculate rolling Z-score for a series
-                        def rolling_zscore(series, window=50):
-                            return (series - series.rolling(window).mean()) / series.rolling(window).std()
+            # Retain the fetched history so changing the date redraws the analysis without another API call.
+            if st.session_state.get('historical_z_chart_config') == z_chart_config:
+                df_z_hist = st.session_state.get('historical_z_chart_data').copy()
+                available_dates = sorted(np.unique(pd.DatetimeIndex(df_z_hist.index).date))
 
-                        # Calculate historical Z-scores for each component relative to its own history
-                        z_df = pd.DataFrame(index=df_z_hist.index)
-                        z_df['Momentum (z)'] = rolling_zscore(df_z_hist['momentum'])
-                        z_df['Flow (z)'] = rolling_zscore(df_z_hist['money_flow_signal'])
-                        z_df['Volatility (z)'] = rolling_zscore(df_z_hist['atr14'])
-                        z_df['Trend (z)'] = rolling_zscore(df_z_hist['z_score']) # z_score is price vs BBands
+                if available_dates:
+                    date_key = f"z_chart_analysis_date_{z_chart_asset}_{z_chart_timeframe}"
+                    with st.popover("Select analysis date"):
+                        selected_z_date = st.date_input(
+                            "Date to analyze",
+                            value=available_dates[-1],
+                            min_value=available_dates[0],
+                            max_value=available_dates[-1],
+                            key=date_key,
+                        )
+                    st.caption(f"Showing component analysis for {selected_z_date:%B %d, %Y}.")
 
-                        # Create Plotly figure
+                    # Calculate each component against the complete fetched history, then show the chosen date.
+                    df_z_hist['is_up'] = df_z_hist['close'] >= df_z_hist['open']
+                    inflow = df_z_hist['volume'].where(df_z_hist['is_up'], 0)
+                    outflow = df_z_hist['volume'].where(~df_z_hist['is_up'], 0)
+                    rolling_inflow = inflow.rolling(window=20).sum()
+                    rolling_outflow = outflow.rolling(window=20).sum()
+                    df_z_hist['money_flow_signal'] = (rolling_inflow - rolling_outflow) / (rolling_inflow + rolling_outflow)
+
+                    def rolling_zscore(series, window=50):
+                        return (series - series.rolling(window).mean()) / series.rolling(window).std()
+
+                    z_df = pd.DataFrame(index=df_z_hist.index)
+                    z_df['Momentum (z)'] = rolling_zscore(df_z_hist['momentum'])
+                    z_df['Flow (z)'] = rolling_zscore(df_z_hist['money_flow_signal'])
+                    z_df['Volatility (z)'] = rolling_zscore(df_z_hist['atr14'])
+                    z_df['Trend (z)'] = rolling_zscore(df_z_hist['z_score'])
+                    z_df = z_df.loc[pd.DatetimeIndex(z_df.index).date == selected_z_date]
+
+                    if z_df.empty:
+                        st.info("No historical Z-score data is available for the selected date.")
+                    else:
                         fig_z = go.Figure()
                         for col in z_df.columns:
                             fig_z.add_trace(go.Scatter(x=z_df.index, y=z_df[col], mode='lines', name=col))
 
                         fig_z.add_hline(y=0, line_width=1, line_dash="dash", line_color="grey")
-                        fig_z.update_layout(title=f'Historical Z-Score Components for {z_chart_asset}',
-                                          yaxis_title='Z-Score (Standard Deviations from Mean)',
-                                          template='plotly_dark')
+                        fig_z.update_layout(title=f'Historical Z-Score Components for {z_chart_asset} — {selected_z_date:%Y-%m-%d}',
+                                            yaxis_title='Z-Score (Standard Deviations from Mean)',
+                                            template='plotly_dark')
                         st.plotly_chart(fig_z, width='stretch')
 
-                        # Show up to 20 recent drop events across all components
                         drop_events = []
                         for col in z_df.columns:
                             series = z_df[col].dropna()
                             if len(series) < 2:
                                 continue
                             changes = series.diff().dropna()
-                            # find indices where the change was negative (a drop)
-                            drop_idxs = changes[changes < 0].index
-                            for idx in drop_idxs:
-                                try:
-                                    prev_val = float(series.shift(1).loc[idx])
-                                    curr_val = float(series.loc[idx])
-                                except Exception:
-                                    continue
+                            for idx in changes[changes < 0].index:
+                                prev_val = float(series.shift(1).loc[idx])
+                                curr_val = float(series.loc[idx])
                                 drop_events.append({
                                     'Component': col,
                                     'Drop Time': pd.Timestamp(idx),
@@ -2601,42 +2621,40 @@ def main():
                                 })
 
                         if drop_events:
-                            # sort by most recent drops first and limit to 50 events
-                            drops_df = pd.DataFrame(drop_events)
-                            drops_df = drops_df.sort_values('Drop Time', ascending=False).head(50)
+                            drops_df = pd.DataFrame(drop_events).sort_values('Drop Time', ascending=False).head(50)
                             drops_df['Drop Time'] = drops_df['Drop Time'].dt.strftime('%Y-%m-%d %H:%M:%S')
-                            st.subheader("Recent Drop Events (up to 50)")
+                            st.subheader("Drop Events for Selected Date (up to 50)")
                             st.dataframe(drops_df[['Component', 'Drop Time', 'Previous Value', 'Current Value', 'Drop Size']].style.format({
                                 'Previous Value': '{:.3f}',
                                 'Current Value': '{:.3f}',
                                 'Drop Size': '{:.3f}'
                             }), width='stretch')
                         else:
-                            st.info("No downward moves were detected in the selected history window.")
-                    else:
-                        st.error(f"Could not fetch data to generate Z-chart for {z_chart_asset}.")
+                            st.info("No downward moves were detected on the selected date.")
 
         # --- Key Support Levels (Put Support Proxy) ---
         st.divider()
         st.subheader("Key Support Levels (Put Support Proxy)")
         st.caption("These technical levels often act as strong support, similar to areas with high Put option open interest.")
         
-        support_data = []
-        for sym in indices_for_qs:
-            # We can reuse the data we just fetched
-            df_support = fetch_and_analyze(sym, timeframe=timeframe, silent=True)
-            if df_support is not None and not df_support.empty:
-                current = df_support.iloc[-1]
-                support_data.append({
-                    'Symbol': sym,
-                    'Current Price': current['close'],
-                    'Bullish Order Block': current.get('ob_bull', 0.0),
-                    'Lower Bollinger Band': current.get('bb_lower', 0.0),
-                    '200-Period MA': current.get('sma_200', 0.0)
-                })
-        
-        if support_data:
-            df_support_levels = pd.DataFrame(support_data)
+        if st.button("Refresh Key Support Levels"):
+            support_data = []
+            with st.spinner("Fetching key support levels..."):
+                for sym in indices_for_qs:
+                    df_support = fetch_and_analyze(sym, timeframe=timeframe, silent=True)
+                    if df_support is not None and not df_support.empty:
+                        current = df_support.iloc[-1]
+                        support_data.append({
+                            'Symbol': sym,
+                            'Current Price': current['close'],
+                            'Bullish Order Block': current.get('ob_bull', 0.0),
+                            'Lower Bollinger Band': current.get('bb_lower', 0.0),
+                            '200-Period MA': current.get('sma_200', 0.0)
+                        })
+            st.session_state['support_levels_data'] = pd.DataFrame(support_data)
+
+        df_support_levels = st.session_state.get('support_levels_data', pd.DataFrame()).copy()
+        if not df_support_levels.empty:
             styler_support = df_support_levels.style.format({
                 'Current Price': '${:,.2f}',
                 'Bullish Order Block': '${:,.2f}',
@@ -2648,7 +2666,7 @@ def main():
             )
             st.dataframe(styler_support, width='stretch')
         else:
-            st.info("Click 'Refresh Indices Data' to load the latest metrics for US Markets.")
+            st.info("Click 'Refresh Key Support Levels' to load the latest support-level basket.")
             
         st.divider()
         st.subheader("🏢 Top 10 US Stocks Overview")
@@ -2731,10 +2749,7 @@ def main():
                 "rsi": "{:.1f}"
             })
 
-            if hasattr(styler_stocks, 'map'):
-                styler_stocks = styler_stocks.map(color_metrics, subset=['momentum'])
-            else:
-                styler_stocks = styler_stocks.applymap(color_metrics, subset=['momentum'])
+            styler_stocks = styler_stocks.map(color_metrics, subset=['momentum'])
 
             st.dataframe(styler_stocks, width='stretch')
         else:
@@ -3172,6 +3187,248 @@ def main():
                         st.error(f"An error occurred during analysis: {e}")
         else:
             st.warning("Run a derivative scan in the 'Derivatives Trend Scan' tab first to populate the list of available crypto assets.")
+
+    with tab12:
+        st.subheader("🔥 Derivative Crypto Analysis")
+        st.write("Scan top Binance derivatives, contextualized with real-time ETF order flow from major US markets.")
+
+        # --- 1. Derivative Scan Section (Copied from Tab 3) ---
+        st.divider()
+        st.subheader("Derivative Asset Scan")
+        c1_deriv, c2_deriv, c3_deriv = st.columns(3)
+        with c1_deriv:
+            timeframe_deriv_new = st.selectbox("Select timeframe", ["5m", "15m", "1h", "4h"], index=2, key="tf_deriv_new")
+        with c2_deriv:
+            flow_timeframe_new = st.selectbox("Inflow/Outflow timeframe", ["5m", "15m", "1h", "4h"], index=2, key="flow_tf_new")
+        with c3_deriv:
+            volume_timeframe_new = st.selectbox("Short-term volume timeframe", ["5m", "15m", "1h", "4h"], index=2, key="vol_tf_new")
+
+        if 'df_deriv_new' not in st.session_state:
+            st.session_state.df_deriv_new = pd.DataFrame()
+
+        if st.button("Scan Top Derivatives", key="scan_deriv_new"):
+            with st.spinner("Scanning top derivative assets..."):
+                df_deriv_new = scan_top_derivative_assets(timeframe=timeframe_deriv_new, flow_timeframe=flow_timeframe_new, volume_timeframe=volume_timeframe_new, top_n=100)
+                if df_deriv_new is not None and not df_deriv_new.empty:
+                    st.session_state.df_deriv_new = df_deriv_new
+                else:
+                    st.warning("No derivative asset data returned.")
+
+        if not st.session_state.df_deriv_new.empty:
+            df_deriv_new = st.session_state.df_deriv_new.copy()
+            # Perform QS score calculation
+            df_deriv_new['z_momentum'] = (df_deriv_new['momentum'] - df_deriv_new['momentum'].mean()) / df_deriv_new['momentum'].std()
+            df_deriv_new['z_flow'] = (df_deriv_new['money_flow_signal'] - df_deriv_new['money_flow_signal'].mean()) / df_deriv_new['money_flow_signal'].std()
+            df_deriv_new['z_volume'] = (df_deriv_new['vol_ratio'] - df_deriv_new['vol_ratio'].mean()) / df_deriv_new['vol_ratio'].std()
+            df_deriv_new['z_volatility'] = (df_deriv_new['atr14'] - df_deriv_new['atr14'].mean()) / df_deriv_new['atr14'].std()
+            df_deriv_new['z_trend'] = (df_deriv_new['z_score'] - df_deriv_new['z_score'].mean()) / df_deriv_new['z_score'].std()
+            df_deriv_new['qs_score'] = (
+                0.35 * df_deriv_new['z_momentum'] + 0.25 * df_deriv_new['z_flow'] + 0.20 * df_deriv_new['z_volume'] -
+                0.10 * df_deriv_new['z_volatility'] + 0.10 * df_deriv_new['z_trend']
+            ).fillna(0)
+            df_deriv_new.sort_values(by='qs_score', ascending=False, inplace=True)
+            st.dataframe(df_deriv_new.style.format({"price": "${:.2f}", "momentum": "{:.2%}", "qs_score": "{:.2f}"}), width='stretch')
+
+        # --- 2. Real-Time ETF Order Flow Section ---
+        st.divider()
+        st.subheader("📊 Real-Time ETF Order Flow (Macro Context)")
+        st.caption("Monitor buying vs. selling pressure in major US ETFs to gauge overall market sentiment.")
+        c1_etf, c2_etf = st.columns(2)
+        with c1_etf:
+            etf_flow_tf = st.selectbox("Select ETF Order Flow Timeframe", options=['5m', '15m', '1h', '4h', '1d'], index=2, key="etf_flow_tf_new")
+        with c2_etf:
+            etf_flow_candles = st.number_input("Number of Candles to Analyze", min_value=50, max_value=1000, value=200, step=50, key="etf_flow_candles_new")
+
+        if 'etf_order_flow_history' not in st.session_state:
+            st.session_state.etf_order_flow_history = {}
+
+        if st.button("Refresh ETF Order Flow", key="refresh_etf_flow_new"):
+            with st.spinner(f"Calculating ETF order flow for {etf_flow_tf} timeframe..."):
+                etf_indices = ['SPY', 'QQQ', 'DIA', 'IWM'] # Top ETFs
+                etf_order_flow_data = []
+                st.session_state.etf_order_flow_history.clear()
+                for sym in etf_indices:
+                    df_flow_calc = fetch_and_analyze(sym, timeframe=etf_flow_tf, silent=True, limit=etf_flow_candles)
+                    if df_flow_calc is not None and not df_flow_calc.empty:
+                        df_flow_calc['is_up'] = df_flow_calc['close'] >= df_flow_calc['open']
+                        inflow = float(df_flow_calc.loc[df_flow_calc['is_up'], 'volume'].sum())
+                        outflow = float(df_flow_calc.loc[~df_flow_calc['is_up'], 'volume'].sum())
+                        etf_order_flow_data.append({
+                            'Symbol': sym,
+                            'Inflow': inflow,
+                            'Outflow': outflow,
+                            'Net Flow': inflow - outflow,
+                            'Money Flow Signal': (inflow - outflow) / (inflow + outflow) if (inflow + outflow) > 0 else 0
+                        })
+                        st.session_state.etf_order_flow_history[sym] = df_flow_calc.copy()
+                st.session_state.etf_order_flow_summary = etf_order_flow_data
+
+        if 'etf_order_flow_summary' in st.session_state and st.session_state.etf_order_flow_summary:
+            df_etf_flow = pd.DataFrame(st.session_state.etf_order_flow_summary)
+            styler_etf_flow = df_etf_flow.style.format({
+                'Inflow': format_large_number, 'Outflow': format_large_number, 'Net Flow': format_large_number, 'Money Flow Signal': '{:.2f}'
+            }).background_gradient(subset=['Net Flow'], cmap='RdYlGn').bar(subset=['Money Flow Signal'], align='zero', color=['#d65f5f', '#5fba7d'])
+            st.dataframe(styler_etf_flow, width='stretch')
+
+        # --- 3. Historical Inflow/Outflow Section ---
+        st.divider()
+        st.subheader("📜 Historical Inflow/Outflow Analysis")
+        st.caption("Select an asset from the scans above to see its detailed historical order flow data and cumulative flow chart.")
+
+        # Combine symbols from both scans for the dropdown
+        crypto_symbols = st.session_state.df_deriv_new['symbol'].tolist() if not st.session_state.df_deriv_new.empty else []
+        etf_symbols = list(st.session_state.etf_order_flow_history.keys())
+        all_symbols = etf_symbols + crypto_symbols
+
+        if all_symbols:
+            history_asset_new = st.selectbox("Select Asset for Historical View", options=all_symbols, key="history_asset_new")
+
+            # Determine if the selected asset is an ETF or Crypto and get its data
+            history_df = None
+            if history_asset_new in etf_symbols:
+                history_df = st.session_state.etf_order_flow_history.get(history_asset_new)
+            elif history_asset_new in crypto_symbols:
+                # For crypto, we need to fetch and calculate on the fly or store it during the scan
+                # For simplicity and responsiveness, we'll fetch it here.
+                with st.spinner(f"Fetching historical flow for {history_asset_new}..."):
+                    # Use the timeframes selected for the crypto scan
+                    history_df = fetch_and_analyze(history_asset_new, timeframe=flow_timeframe_new, silent=True, limit=500)
+
+            if history_df is not None and not history_df.empty:
+                # Calculate cumulative flow for the selected asset
+                history_df['net_flow_per_candle'] = history_df['volume'] * np.where(history_df['close'] >= history_df['open'], 1, -1)
+                history_df['cumulative_net_flow'] = history_df['net_flow_per_candle'].cumsum()
+
+                st.subheader(f"Cumulative Net Flow for {history_asset_new}")
+                st.line_chart(history_df['cumulative_net_flow'])
+
+                st.subheader(f"Historical Data Table for {history_asset_new} (Last 50 Candles)")
+                st.dataframe(history_df.tail(50), width='stretch', height=300)
+            else:
+                st.info(f"No historical data available for {history_asset_new}. Please run the appropriate scan.")
+        else:
+            st.info("Run a derivative or ETF scan to populate the asset list for historical analysis.")
+
+    with tab13:
+        st.subheader("📢 Index Spike Alert Engine")
+        st.info("""
+        This tool provides historical data and real-time alerts for simultaneous spikes in VIX, SPY, and QQQ.
+        An alert is triggered when:
+        - **VIX** shows a strong move (Momentum & Z-Score are both > 1 or both < -1).
+        - **AND** at the same time, either **SPY** or **QQQ** shows a strong move in the same direction (Momentum & Z-Score are both > 1 or both < -1).
+        This can signal a significant market-wide risk-on or risk-off event.
+        """)
+
+        alert_symbols = ['SPY', 'QQQ', '^VIX']
+        alert_timeframe = st.selectbox("Select Timeframe for Analysis", ["5m", "15m", "1h", "4h"], index=1, key="alert_tf")
+        
+        # Session state to store historical data and last alert time
+        if 'alert_history_df' not in st.session_state:
+            st.session_state.alert_history_df = pd.DataFrame()
+        if 'last_alert_time' not in st.session_state:
+            st.session_state.last_alert_time = None
+
+        def fetch_alert_data(symbols, timeframe):
+            """Fetches and processes data for the alert table."""
+            all_stats = []
+            for sym in symbols:
+                df = fetch_and_analyze(sym, timeframe=timeframe, silent=True, limit=200)
+                if df is not None and not df.empty:
+                    # Get the last 50 records for historical view
+                    for i in range(min(50, len(df))):
+                        record = df.iloc[-(i+1)]
+                        all_stats.append({
+                            'Time': record.name,
+                            'Symbol': sym,
+                            'Momentum': record.get('momentum', 0.0),
+                            'Z-Score': record.get('z_score', 0.0)
+                        })
+            if all_stats:
+                history_df = pd.DataFrame(all_stats)
+                history_df.sort_values(by='Time', ascending=False, inplace=True)
+                return history_df
+            return pd.DataFrame()
+
+        def check_and_send_alert(df, token, chat_id):
+            """Checks the latest data for alert conditions."""
+            if df.empty or token == "" or chat_id == "":
+                return
+
+            latest_time = df['Time'].max()
+            
+            # Avoid sending multiple alerts for the same event
+            if st.session_state.last_alert_time and st.session_state.last_alert_time == latest_time:
+                return
+
+            latest_data = df[df['Time'] == latest_time].set_index('Symbol')
+            
+            if not all(s in latest_data.index for s in alert_symbols):
+                return # Not all data is ready
+
+            vix_mom = latest_data.loc['^VIX', 'Momentum']
+            vix_z = latest_data.loc['^VIX', 'Z-Score']
+            spy_mom = latest_data.loc['SPY', 'Momentum']
+            spy_z = latest_data.loc['SPY', 'Z-Score']
+            qqq_mom = latest_data.loc['QQQ', 'Momentum']
+            qqq_z = latest_data.loc['QQQ', 'Z-Score']
+
+            # Define strong move conditions
+            vix_bull = vix_mom > 1 and vix_z > 1
+            vix_bear = vix_mom < -1 and vix_z < -1
+            spy_bull = spy_mom > 1 and spy_z > 1
+            spy_bear = spy_mom < -1 and spy_z < -1
+            qqq_bull = qqq_mom > 1 and qqq_z > 1
+            qqq_bear = qqq_mom < -1 and qqq_z < -1
+
+            alert_msg = None
+            if (vix_bull and spy_bull and qqq_bull):
+                alert_msg = (
+                    f"🚨 **Index Spike Alert (BULLISH)**\n\n"
+                    f"A simultaneous bullish spike was detected across VIX, SPY, and QQQ, suggesting a strong, unified market risk-on event.\n\n"
+                    f"**VIX:**\n- Momentum: `{vix_mom:.2f}`\n- Z-Score: `{vix_z:.2f}`\n\n"
+                    f"**SPY:**\n- Momentum: `{spy_mom:.2f}`\n- Z-Score: `{spy_z:.2f}`\n\n"
+                    f"**QQQ:**\n- Momentum: `{qqq_mom:.2f}`\n- Z-Score: `{qqq_z:.2f}`"
+                )
+            elif (vix_bear and spy_bear and qqq_bear):
+                alert_msg = (
+                    f"🚨 **Index Spike Alert (BEARISH)**\n\n"
+                    f"A simultaneous bearish spike was detected in VIX and major indices, suggesting a strong risk-off event.\n\n"
+                    f"**VIX:**\n- Momentum: `{vix_mom:.2f}`\n- Z-Score: `{vix_z:.2f}`\n\n"
+                    f"**SPY:**\n- Momentum: `{spy_mom:.2f}`\n- Z-Score: `{spy_z:.2f}`\n\n"
+                    f"**QQQ:**\n- Momentum: `{qqq_mom:.2f}`\n- Z-Score: `{qqq_z:.2f}`"
+                )
+
+            if alert_msg:
+                url = f"https://api.telegram.org/bot{token}/sendMessage"
+                try:
+                    requests.post(url, json={"chat_id": chat_id, "text": alert_msg, "parse_mode": "Markdown"}, timeout=5)
+                    st.session_state.last_alert_time = latest_time
+                    st.success(f"Alert sent to Telegram at {latest_time}!")
+                except Exception as e:
+                    st.error(f"Telegram Error: {e}")
+
+        auto_refresh_alert = st.checkbox("🔄 Auto-Refresh & Alert (every 5 mins)")
+
+        if st.button("Fetch Historical Data") or auto_refresh_alert:
+            with st.spinner("Fetching latest index data..."):
+                history_df = fetch_alert_data(alert_symbols, alert_timeframe)
+                if not history_df.empty:
+                    st.session_state.alert_history_df = history_df
+                    check_and_send_alert(history_df, tg_token, tg_chat_id)
+
+        if not st.session_state.alert_history_df.empty:
+            st.subheader("Historical Momentum and Z-Score Data")
+            st.caption(f"Showing the last 50 data points for the {alert_timeframe} timeframe.")
+            
+            styler = st.session_state.alert_history_df.style.format({
+                "Momentum": "{:.2f}",
+                "Z-Score": "{:.2f}"
+            }).map(color_metrics, subset=['Momentum', 'Z-Score'])
+            st.dataframe(styler, height=400, width='stretch')
+
+        if auto_refresh_alert:
+            time.sleep(301)
+            st.rerun()
 
 if __name__ == "__main__":
      try:
