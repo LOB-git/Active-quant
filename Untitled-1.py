@@ -2632,6 +2632,79 @@ def main():
                         else:
                             st.info("No downward moves were detected on the selected date.")
 
+        # --- Volume Delta for US Indices and Macro Assets ---
+        st.divider()
+        st.subheader("Volume Delta: SPY, QQQ, DIA, XAU/USD, and FTSE")
+        st.caption("Volume Delta = volume on up candles minus volume on down candles. Positive values indicate net buying pressure; negative values indicate net selling pressure.")
+        macro_delta_timeframe = st.selectbox(
+            "Volume Delta timeframe",
+            ['5m', '15m', '1h', '4h'],
+            index=2,
+            key='macro_volume_delta_timeframe'
+        )
+        macro_delta_assets = {
+            'SPY': 'SPY',
+            'QQQ': 'QQQ',
+            'DIA': 'DIA',
+            'XAU/USD': 'XAUUSD',
+            'FTSE': '^FTSE'
+        }
+        macro_delta_config = (tuple(macro_delta_assets.items()), macro_delta_timeframe)
+
+        if st.button("Refresh Index & Macro Volume Delta", key='refresh_macro_volume_delta'):
+            macro_delta_rows = []
+            macro_delta_history = {}
+            with st.spinner("Calculating volume delta for SPY, QQQ, DIA, XAU/USD, and FTSE..."):
+                for display_symbol, data_symbol in macro_delta_assets.items():
+                    delta_df = fetch_and_analyze(data_symbol, timeframe=macro_delta_timeframe, silent=True, limit=500)
+                    if delta_df is None or delta_df.empty:
+                        continue
+                    delta_df = delta_df.copy()
+                    delta_df['Buy Volume'] = delta_df['volume'].where(delta_df['close'] >= delta_df['open'], 0)
+                    delta_df['Sell Volume'] = delta_df['volume'].where(delta_df['close'] < delta_df['open'], 0)
+                    delta_df['Volume Delta'] = delta_df['Buy Volume'] - delta_df['Sell Volume']
+                    delta_df['Cumulative Volume Delta'] = delta_df['Volume Delta'].cumsum()
+                    delta_df['20-Candle Volume Delta'] = delta_df['Volume Delta'].rolling(20).sum()
+                    macro_delta_history[display_symbol] = delta_df
+                    macro_delta_rows.append({
+                        'Asset': display_symbol,
+                        'Latest Volume Delta': float(delta_df['Volume Delta'].iloc[-1]),
+                        '20-Candle Volume Delta': float(delta_df['20-Candle Volume Delta'].iloc[-1]),
+                        'Cumulative Volume Delta': float(delta_df['Cumulative Volume Delta'].iloc[-1])
+                    })
+            st.session_state['macro_volume_delta_summary'] = pd.DataFrame(macro_delta_rows)
+            st.session_state['macro_volume_delta_history'] = macro_delta_history
+            st.session_state['macro_volume_delta_config'] = macro_delta_config
+
+        if st.session_state.get('macro_volume_delta_config') == macro_delta_config:
+            macro_delta_summary = st.session_state.get('macro_volume_delta_summary', pd.DataFrame()).copy()
+            macro_delta_history = st.session_state.get('macro_volume_delta_history', {})
+            if not macro_delta_summary.empty:
+                st.dataframe(macro_delta_summary.style.format({
+                    'Latest Volume Delta': format_large_number,
+                    '20-Candle Volume Delta': format_large_number,
+                    'Cumulative Volume Delta': format_large_number
+                }), width='stretch')
+                macro_delta_asset = st.selectbox(
+                    "Select asset for detailed Volume Delta",
+                    macro_delta_summary['Asset'].tolist(),
+                    key='macro_volume_delta_asset'
+                )
+                selected_macro_delta = macro_delta_history[macro_delta_asset]
+                macro_delta_metrics = st.columns(3)
+                macro_delta_metrics[0].metric("Latest Volume Delta", format_large_number(float(selected_macro_delta['Volume Delta'].iloc[-1])))
+                macro_delta_metrics[1].metric("20-Candle Volume Delta", format_large_number(float(selected_macro_delta['20-Candle Volume Delta'].iloc[-1])))
+                macro_delta_metrics[2].metric("Cumulative Volume Delta", format_large_number(float(selected_macro_delta['Cumulative Volume Delta'].iloc[-1])))
+                st.line_chart(selected_macro_delta['Cumulative Volume Delta'])
+                st.dataframe(selected_macro_delta[['Buy Volume', 'Sell Volume', 'Volume Delta', 'Cumulative Volume Delta']].tail(50).style.format({
+                    'Buy Volume': format_large_number,
+                    'Sell Volume': format_large_number,
+                    'Volume Delta': format_large_number,
+                    'Cumulative Volume Delta': format_large_number
+                }), width='stretch', height=300)
+            else:
+                st.info("No volume-delta data was returned. Try another timeframe.")
+
         # --- Key Support Levels (Put Support Proxy) ---
         st.divider()
         st.subheader("Key Support Levels (Put Support Proxy)")
@@ -3208,7 +3281,7 @@ def main():
 
         if st.button("Scan Top Derivatives", key="scan_deriv_new"):
             with st.spinner("Scanning top derivative assets..."):
-                df_deriv_new = scan_top_derivative_assets(timeframe=timeframe_deriv_new, flow_timeframe=flow_timeframe_new, volume_timeframe=volume_timeframe_new, top_n=100)
+                df_deriv_new = scan_top_derivative_assets(timeframe=timeframe_deriv_new, flow_timeframe=flow_timeframe_new, volume_timeframe=volume_timeframe_new, top_n=10)
                 if df_deriv_new is not None and not df_deriv_new.empty:
                     st.session_state.df_deriv_new = df_deriv_new
                 else:
@@ -3228,6 +3301,213 @@ def main():
             ).fillna(0)
             df_deriv_new.sort_values(by='qs_score', ascending=False, inplace=True)
             st.dataframe(df_deriv_new.style.format({"price": "${:.2f}", "momentum": "{:.2%}", "qs_score": "{:.2f}"}), width='stretch')
+
+            # --- Historical Z-Score Component Analysis for scanned derivative assets ---
+            st.divider()
+            st.subheader("Historical Z-Score Component Analysis")
+            st.caption("Select a scanned derivative asset, then choose a historical date to review its component Z-scores and downward-move events.")
+            deriv_z_symbols = df_deriv_new['symbol'].dropna().tolist()
+            deriv_z_asset = st.selectbox("Select scanned asset for Z-Score analysis", deriv_z_symbols, key='deriv_z_chart_asset')
+            deriv_z_timeframe = st.selectbox(
+                "Select timeframe for derivative historical components",
+                ['5m', '15m', '1h', '4h', '12h', '1d'],
+                index=2,
+                key='deriv_z_chart_timeframe'
+            )
+            deriv_z_config = (deriv_z_asset, deriv_z_timeframe)
+
+            if st.button(f"Generate Derivative Historical Z-Chart for {deriv_z_asset}", key='generate_deriv_z_chart'):
+                with st.spinner(f"Calculating historical Z-scores for {deriv_z_asset}..."):
+                    deriv_z_history = fetch_and_analyze(deriv_z_asset, timeframe=deriv_z_timeframe, silent=True)
+                if deriv_z_history is not None and not deriv_z_history.empty:
+                    st.session_state['deriv_historical_z_data'] = deriv_z_history
+                    st.session_state['deriv_historical_z_config'] = deriv_z_config
+                else:
+                    st.error(f"Could not fetch data to generate the Z-score chart for {deriv_z_asset}.")
+
+            if st.session_state.get('deriv_historical_z_config') == deriv_z_config:
+                deriv_z_history = st.session_state['deriv_historical_z_data'].copy()
+                deriv_available_dates = sorted(np.unique(pd.DatetimeIndex(deriv_z_history.index).date))
+                if deriv_available_dates:
+                    with st.popover("Select derivative analysis date"):
+                        deriv_z_date = st.date_input(
+                            "Date to analyze",
+                            value=deriv_available_dates[-1],
+                            min_value=deriv_available_dates[0],
+                            max_value=deriv_available_dates[-1],
+                            key=f"deriv_z_analysis_date_{deriv_z_asset}_{deriv_z_timeframe}"
+                        )
+                    st.caption(f"Showing component analysis for {deriv_z_date:%B %d, %Y}.")
+
+                    deriv_z_history['is_up'] = deriv_z_history['close'] >= deriv_z_history['open']
+                    deriv_inflow = deriv_z_history['volume'].where(deriv_z_history['is_up'], 0)
+                    deriv_outflow = deriv_z_history['volume'].where(~deriv_z_history['is_up'], 0)
+                    deriv_inflow = deriv_inflow.rolling(window=20).sum()
+                    deriv_outflow = deriv_outflow.rolling(window=20).sum()
+                    deriv_z_history['money_flow_signal'] = (deriv_inflow - deriv_outflow) / (deriv_inflow + deriv_outflow)
+
+                    def deriv_rolling_zscore(series, window=50):
+                        return (series - series.rolling(window).mean()) / series.rolling(window).std()
+
+                    deriv_z_df = pd.DataFrame(index=deriv_z_history.index)
+                    deriv_z_df['Momentum (z)'] = deriv_rolling_zscore(deriv_z_history['momentum'])
+                    deriv_z_df['Flow (z)'] = deriv_rolling_zscore(deriv_z_history['money_flow_signal'])
+                    deriv_z_df['Volatility (z)'] = deriv_rolling_zscore(deriv_z_history['atr14'])
+                    deriv_z_df['Trend (z)'] = deriv_rolling_zscore(deriv_z_history['z_score'])
+                    deriv_z_df = deriv_z_df.loc[pd.DatetimeIndex(deriv_z_df.index).date == deriv_z_date]
+
+                    if deriv_z_df.empty:
+                        st.info("No historical Z-score data is available for the selected date.")
+                    else:
+                        deriv_fig_z = go.Figure()
+                        for column in deriv_z_df.columns:
+                            deriv_fig_z.add_trace(go.Scatter(x=deriv_z_df.index, y=deriv_z_df[column], mode='lines', name=column))
+                        deriv_fig_z.add_hline(y=0, line_width=1, line_dash="dash", line_color="grey")
+                        deriv_fig_z.update_layout(
+                            title=f'Historical Z-Score Components for {deriv_z_asset} — {deriv_z_date:%Y-%m-%d}',
+                            yaxis_title='Z-Score (Standard Deviations from Mean)',
+                            template='plotly_dark'
+                        )
+                        st.plotly_chart(deriv_fig_z, width='stretch')
+
+                        deriv_drop_events = []
+                        for column in deriv_z_df.columns:
+                            series = deriv_z_df[column].dropna()
+                            if len(series) < 2:
+                                continue
+                            for idx in series.diff().dropna()[lambda changes: changes < 0].index:
+                                previous_value = float(series.shift(1).loc[idx])
+                                current_value = float(series.loc[idx])
+                                deriv_drop_events.append({
+                                    'Component': column,
+                                    'Drop Time': pd.Timestamp(idx),
+                                    'Previous Value': previous_value,
+                                    'Current Value': current_value,
+                                    'Drop Size': previous_value - current_value
+                                })
+
+                        if deriv_drop_events:
+                            deriv_drops_df = pd.DataFrame(deriv_drop_events).sort_values('Drop Time', ascending=False).head(50)
+                            deriv_drops_df['Drop Time'] = deriv_drops_df['Drop Time'].dt.strftime('%Y-%m-%d %H:%M:%S')
+                            st.subheader("Drop Events for Selected Date (up to 50)")
+                            st.dataframe(deriv_drops_df[['Component', 'Drop Time', 'Previous Value', 'Current Value', 'Drop Size']].style.format({
+                                'Previous Value': '{:.3f}',
+                                'Current Value': '{:.3f}',
+                                'Drop Size': '{:.3f}'
+                            }), width='stretch')
+                        else:
+                            st.info("No downward moves were detected on the selected date.")
+
+            # --- Lowest Flow (z) Drops across scanned assets ---
+            st.divider()
+            st.subheader("Smallest Flow (z) Drops Across Scanned Assets")
+            st.caption("For each scanned asset, this finds its smallest downward Flow (z) event, then ranks the 20 smallest drop sizes. This may take time because it loads historical data for every scanned asset.")
+            deriv_flow_rank_timeframe = st.selectbox(
+                "Flow (z) drop ranking timeframe",
+                ['5m', '15m', '1h', '4h'],
+                index=2,
+                key='deriv_flow_drop_timeframe'
+            )
+            deriv_flow_rank_config = (tuple(deriv_z_symbols), deriv_flow_rank_timeframe)
+
+            if st.button("Analyze Smallest Flow (z) Drops for All Scanned Assets", key='analyze_deriv_flow_drops'):
+                flow_drop_rows = []
+                progress_bar = st.progress(0, text="Preparing Flow (z) drop analysis...")
+                for position, flow_asset in enumerate(deriv_z_symbols, start=1):
+                    progress_bar.progress(position / len(deriv_z_symbols), text=f"Analyzing {flow_asset} ({position}/{len(deriv_z_symbols)})...")
+                    flow_history = fetch_and_analyze(flow_asset, timeframe=deriv_flow_rank_timeframe, silent=True)
+                    if flow_history is None or flow_history.empty:
+                        continue
+
+                    flow_history = flow_history.copy()
+                    flow_history['is_up'] = flow_history['close'] >= flow_history['open']
+                    flow_inflow = flow_history['volume'].where(flow_history['is_up'], 0).rolling(window=20).sum()
+                    flow_outflow = flow_history['volume'].where(~flow_history['is_up'], 0).rolling(window=20).sum()
+                    flow_signal = (flow_inflow - flow_outflow) / (flow_inflow + flow_outflow)
+                    flow_z_series = (flow_signal - flow_signal.rolling(window=50).mean()) / flow_signal.rolling(window=50).std()
+                    flow_z_series = flow_z_series.dropna()
+                    flow_changes = flow_z_series.diff().dropna()
+                    downward_events = flow_changes[flow_changes < 0]
+                    if downward_events.empty:
+                        continue
+
+                    drop_sizes = -downward_events
+                    smallest_event_time = drop_sizes.idxmin()
+                    previous_value = float(flow_z_series.shift(1).loc[smallest_event_time])
+                    current_value = float(flow_z_series.loc[smallest_event_time])
+                    flow_drop_rows.append({
+                        'Asset': flow_asset,
+                        'Drop Time': pd.Timestamp(smallest_event_time),
+                        'Previous Flow (z)': previous_value,
+                        'Lowest Flow (z)': current_value,
+                        'Drop Size': previous_value - current_value
+                    })
+
+                progress_bar.empty()
+                st.session_state['deriv_flow_drop_ranking'] = pd.DataFrame(flow_drop_rows)
+                st.session_state['deriv_flow_drop_ranking_config'] = deriv_flow_rank_config
+
+            if st.session_state.get('deriv_flow_drop_ranking_config') == deriv_flow_rank_config:
+                deriv_flow_ranking = st.session_state.get('deriv_flow_drop_ranking', pd.DataFrame()).copy()
+                if not deriv_flow_ranking.empty:
+                    deriv_flow_ranking = deriv_flow_ranking.sort_values('Drop Size', ascending=True).head(20)
+                    deriv_flow_ranking['Drop Time'] = deriv_flow_ranking['Drop Time'].dt.strftime('%Y-%m-%d %H:%M:%S')
+                    st.dataframe(deriv_flow_ranking.style.format({
+                        'Previous Flow (z)': '{:.3f}',
+                        'Lowest Flow (z)': '{:.3f}',
+                        'Drop Size': '{:.3f}'
+                    }), width='stretch')
+
+                    st.subheader("Volume Delta for Ranked Asset")
+                    st.caption("Volume Delta = volume on up candles minus volume on down candles. Positive values indicate net buying pressure; negative values indicate net selling pressure.")
+                    volume_delta_asset = st.selectbox(
+                        "Select an asset from the smallest Flow (z) drop list",
+                        deriv_flow_ranking['Asset'].tolist(),
+                        key='deriv_volume_delta_asset'
+                    )
+                    volume_delta_config = (volume_delta_asset, deriv_flow_rank_timeframe)
+
+                    if st.button(f"Load Volume Delta for {volume_delta_asset}", key='load_deriv_volume_delta'):
+                        with st.spinner(f"Calculating volume delta for {volume_delta_asset}..."):
+                            volume_delta_history = fetch_and_analyze(
+                                volume_delta_asset,
+                                timeframe=deriv_flow_rank_timeframe,
+                                silent=True
+                            )
+                        if volume_delta_history is not None and not volume_delta_history.empty:
+                            volume_delta_history = volume_delta_history.copy()
+                            volume_delta_history['Buy Volume'] = volume_delta_history['volume'].where(
+                                volume_delta_history['close'] >= volume_delta_history['open'], 0
+                            )
+                            volume_delta_history['Sell Volume'] = volume_delta_history['volume'].where(
+                                volume_delta_history['close'] < volume_delta_history['open'], 0
+                            )
+                            volume_delta_history['Volume Delta'] = volume_delta_history['Buy Volume'] - volume_delta_history['Sell Volume']
+                            volume_delta_history['Cumulative Volume Delta'] = volume_delta_history['Volume Delta'].cumsum()
+                            volume_delta_history['20-Candle Volume Delta'] = volume_delta_history['Volume Delta'].rolling(20).sum()
+                            st.session_state['deriv_volume_delta_data'] = volume_delta_history
+                            st.session_state['deriv_volume_delta_config'] = volume_delta_config
+                        else:
+                            st.error(f"Could not fetch data to calculate volume delta for {volume_delta_asset}.")
+
+                    if st.session_state.get('deriv_volume_delta_config') == volume_delta_config:
+                        volume_delta_history = st.session_state['deriv_volume_delta_data']
+                        latest_delta = float(volume_delta_history['Volume Delta'].iloc[-1])
+                        rolling_delta = float(volume_delta_history['20-Candle Volume Delta'].iloc[-1])
+                        cumulative_delta = float(volume_delta_history['Cumulative Volume Delta'].iloc[-1])
+                        delta_metrics = st.columns(3)
+                        delta_metrics[0].metric("Latest Volume Delta", format_large_number(latest_delta))
+                        delta_metrics[1].metric("20-Candle Volume Delta", format_large_number(rolling_delta))
+                        delta_metrics[2].metric("Cumulative Volume Delta", format_large_number(cumulative_delta))
+                        st.line_chart(volume_delta_history['Cumulative Volume Delta'])
+                        st.dataframe(volume_delta_history[['Buy Volume', 'Sell Volume', 'Volume Delta', 'Cumulative Volume Delta']].tail(50).style.format({
+                            'Buy Volume': format_large_number,
+                            'Sell Volume': format_large_number,
+                            'Volume Delta': format_large_number,
+                            'Cumulative Volume Delta': format_large_number
+                        }), width='stretch', height=300)
+                else:
+                    st.info("No Flow (z) drop events were found for the scanned assets.")
 
         # --- 2. Real-Time ETF Order Flow Section ---
         st.divider()
