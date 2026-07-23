@@ -1465,6 +1465,64 @@ def format_large_number(x):
     except (ValueError, TypeError):
         return "$0"
 
+
+@st.cache_data(ttl=900)
+def get_implied_volatility_analysis(symbol, current_price, fallback_daily_vol=None):
+    """Return an ATM implied-volatility estimate and its one-day expected move."""
+    iv = None
+    expiration = None
+    source = "Near-term ATM options"
+
+    try:
+        ticker = yf.Ticker(symbol)
+        expirations = ticker.options
+        if expirations:
+            today = pd.Timestamp.now(tz='UTC').date()
+            valid_expirations = [
+                expiry for expiry in expirations
+                if pd.Timestamp(expiry).date() >= today
+            ]
+            if valid_expirations:
+                expiration = valid_expirations[0]
+                chain = ticker.option_chain(expiration)
+                atm_values = []
+                for option_side in (chain.calls, chain.puts):
+                    if option_side is None or option_side.empty:
+                        continue
+                    valid = option_side[
+                        option_side['impliedVolatility'].notna()
+                        & (option_side['impliedVolatility'] > 0)
+                    ].copy()
+                    if not valid.empty:
+                        nearest = valid.loc[(valid['strike'] - current_price).abs().idxmin()]
+                        atm_values.append(float(nearest['impliedVolatility']))
+                if atm_values:
+                    iv = float(np.mean(atm_values))
+    except Exception:
+        pass
+
+    is_implied = iv is not None
+    if iv is None and fallback_daily_vol is not None and np.isfinite(fallback_daily_vol):
+        # Historical returns are daily, so multiply by sqrt(252) to annualize.
+        iv = float(fallback_daily_vol) * np.sqrt(252)
+        source = "Historical volatility proxy (options IV unavailable)"
+
+    if iv is None or iv <= 0 or current_price is None or current_price <= 0:
+        return None
+
+    daily_move_pct = iv / np.sqrt(252)
+    daily_move_amount = float(current_price) * daily_move_pct
+    return {
+        'annualized_vol': iv,
+        'is_implied': is_implied,
+        'daily_move_pct': daily_move_pct,
+        'daily_move_amount': daily_move_amount,
+        'lower_price': float(current_price) - daily_move_amount,
+        'upper_price': float(current_price) + daily_move_amount,
+        'expiration': expiration,
+        'source': source,
+    }
+
 def plot_volatility_surface(df, symbol):
     """
     Computes and plots the "quantum" volatility surface and classical distribution.
@@ -2218,33 +2276,61 @@ def main():
                         is_declining = current['close'] < previous['close']
                         # Estimate daily volume (last 7 1-hour bars = 7 trading hours)
                         est_vol = df_idx['volume'].tail(7).sum()
-                        z_score = float(current['z_score']) if pd.notna(current['z_score']) else 0.0
-                        vol_ma = float(current['vol_ma']) if pd.notna(current['vol_ma']) and float(current['vol_ma']) > 0 else np.nan
-                        volume_ratio = float(current['volume']) / vol_ma if pd.notna(vol_ma) else 0.0
-                        cmf_mean = df_idx['cmf'].rolling(window=20).mean().iloc[-1]
-                        cmf_std = df_idx['cmf'].rolling(window=20).std().iloc[-1]
-                        flow_z_score = (float(current['cmf']) - float(cmf_mean)) / float(cmf_std + 1e-9) if pd.notna(cmf_mean) and pd.notna(cmf_std) else 0.0
-                        signal_score = (-z_score) + np.log1p(max(volume_ratio, 0.0)) + flow_z_score
+                        # Calculate each metric for every candle. Changes are measured
+                        # from the previous candle to the current selected-timeframe candle.
+                        z_score_series = pd.to_numeric(df_idx['z_score'], errors='coerce').fillna(0.0)
+                        volume_ratio_series = (
+                            pd.to_numeric(df_idx['volume'], errors='coerce')
+                            / pd.to_numeric(df_idx['vol_ma'], errors='coerce').replace(0, np.nan)
+                        ).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+                        cmf_series = pd.to_numeric(df_idx['cmf'], errors='coerce')
+                        cmf_mean_series = cmf_series.rolling(window=20).mean()
+                        cmf_std_series = cmf_series.rolling(window=20).std()
+                        flow_z_series = (
+                            (cmf_series - cmf_mean_series) / (cmf_std_series + 1e-9)
+                        ).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+                        signal_score_series = (
+                            -z_score_series
+                            + np.log1p(volume_ratio_series.clip(lower=0.0))
+                            + flow_z_series
+                        )
+
+                        def latest_and_change(series):
+                            clean = pd.to_numeric(series, errors='coerce').fillna(0.0)
+                            latest_value = float(clean.iloc[-1])
+                            prior_value = float(clean.iloc[-2]) if len(clean) > 1 else latest_value
+                            return latest_value, latest_value - prior_value
+
+                        momentum, momentum_change = latest_and_change(df_idx['momentum'])
+                        z_score, z_score_change = latest_and_change(z_score_series)
+                        volume_ratio, _ = latest_and_change(volume_ratio_series)
+                        flow_z_score, flow_z_score_change = latest_and_change(flow_z_series)
+                        signal_score, signal_score_change = latest_and_change(signal_score_series)
                         
                         index_stats.append({
                             "Symbol": sym,
                             "Price": current['close'],
-                            "Momentum": current['momentum'],
+                            "Momentum": momentum,
+                            "Momentum Change": momentum_change,
                             "RSI": current['rsi'],
                             "Trend": "Bullish 🟢" if current['close'] > current['ema_50'] else "Bearish 🔴",
                             "Advancing": is_advancing,
                             "Declining": is_declining,
                             "Est. Daily Volume": est_vol,
                             "Z-Score": z_score,
+                            "Z-Score Change": z_score_change,
                             "Volume Ratio": volume_ratio,
                             "Flow Z-Score": flow_z_score,
-                            "Signal Score": signal_score
+                            "Flow Z-Score Change": flow_z_score_change,
+                            "Signal Score": signal_score,
+                            "Signal Score Change": signal_score_change
                         })
                     else:
                         missing_indices.append(sym)
                 
                 # Save the results to session state
                 st.session_state.index_stats = index_stats
+                st.session_state.index_stats_timeframe = timeframe
 
         # Display the table if data exists in session state
         if st.session_state.index_stats:
@@ -2260,27 +2346,82 @@ def main():
             breadth_percent = advancing_count / total_count if total_count > 0 else 0.0
             df_ind['Breadth Ratio'] = breadth_ratio_label
             df_ind['Breadth %'] = breadth_percent
+            change_columns = [
+                "Momentum Change", "Signal Score Change",
+                "Flow Z-Score Change", "Z-Score Change"
+            ]
+            missing_change_columns = [col for col in change_columns if col not in df_ind.columns]
+            if missing_change_columns:
+                for col in missing_change_columns:
+                    df_ind[col] = np.nan
+                st.info("Refresh Indices Data to calculate the changes shown in brackets.")
+
+            def combine_metric_value(value, change, percentage=False):
+                if percentage:
+                    value_text = f"{float(value):.2%}"
+                    change_text = f"{float(change):+.2%}" if pd.notna(change) else "n/a"
+                else:
+                    value_text = f"{float(value):.2f}"
+                    change_text = f"{float(change):+.2f}" if pd.notna(change) else "n/a"
+                return f"{value_text} ({change_text})"
+
+            # Keep one column per metric: current value followed by its change in brackets.
+            df_ind['Momentum'] = df_ind.apply(
+                lambda row: combine_metric_value(
+                    row['Momentum'], row['Momentum Change'], percentage=True
+                ),
+                axis=1,
+            )
+            for metric, change_metric in [
+                ('Signal Score', 'Signal Score Change'),
+                ('Flow Z-Score', 'Flow Z-Score Change'),
+                ('Z-Score', 'Z-Score Change'),
+            ]:
+                df_ind[metric] = df_ind.apply(
+                    lambda row, metric=metric, change_metric=change_metric:
+                        combine_metric_value(row[metric], row[change_metric]),
+                    axis=1,
+                )
+
             df_display = df_ind.drop(columns=['Advancing', 'Declining'])
             df_display = df_display[[
                 "Symbol", "Breadth Ratio", "Breadth %", "Price", "Momentum", "RSI",
                 "Trend", "Signal Score", "Volume Ratio", "Flow Z-Score",
                 "Z-Score", "Est. Daily Volume"
             ]]
-            st.caption("Breadth Ratio = Advancing / Declining. Breadth % = Advancing / Total. Signal Score = -Z-Score + ln(1 + Volume Ratio) + Flow Z-Score")
+            results_timeframe = st.session_state.get('index_stats_timeframe', timeframe)
+            st.caption(
+                f"Bracketed change = current value minus the previous {results_timeframe} candle. "
+                "Breadth Ratio = Advancing / Declining. Breadth % = Advancing / Total. "
+                "Signal Score = -Z-Score + ln(1 + Volume Ratio) + Flow Z-Score"
+            )
             styler = df_display.style.format({
                 "Price": "${:.2f}",
-                "Momentum": "{:.2%}",
                 "RSI": "{:.2f}",
                 "Est. Daily Volume": format_large_number,
-                "Z-Score": "{:.2f}",
                 "Volume Ratio": "{:.2f}x",
-                "Flow Z-Score": "{:.2f}",
-                "Signal Score": "{:.2f}",
                 "Breadth %": "{:.0%}"
             })
             
-            styler = styler.map(color_metrics, subset=['Momentum', 'Z-Score', 'Flow Z-Score', 'Signal Score', 'Breadth %'])
-                
+            styler = styler.map(
+                color_metrics,
+                subset=['Breadth %']
+            )
+
+            def color_bracketed_change(value):
+                try:
+                    change_text = str(value).rsplit('(', 1)[1].rstrip(')').replace('%', '')
+                    change_value = float(change_text)
+                    color = 'green' if change_value > 0 else 'red' if change_value < 0 else 'gray'
+                    return f'color: {color}'
+                except (ValueError, IndexError):
+                    return 'color: gray'
+
+            styler = styler.map(
+                color_bracketed_change,
+                subset=['Momentum', 'Signal Score', 'Flow Z-Score', 'Z-Score']
+            )
+                 
             st.dataframe(styler, width='stretch')
 
             # --- GEX Analysis for Major Indices / Macro Assets ---
@@ -2954,6 +3095,50 @@ def main():
                     p_col2.metric("Underlying Price Trend", price_trend)
                     p_col3.metric("Short-Term Momentum", price_momentum)
                     st.info(f"**Final Prediction:** The analysis suggests the market is most likely to **{final_prediction}**.")
+
+                    # --- Implied Volatility Expected-Move Section ---
+                    st.divider()
+                    st.subheader("Expected One-Day Move from Implied Volatility")
+
+                    current_price = float(current_data['close'])
+                    fallback_daily_vol = None
+                    daily_closes = df_quantum['close'].resample('1D').last().dropna()
+                    daily_returns = np.log(daily_closes / daily_closes.shift(1)).dropna()
+                    if len(daily_returns) >= 10:
+                        fallback_daily_vol = float(daily_returns.tail(20).std())
+
+                    iv_analysis = get_implied_volatility_analysis(
+                        quantum_symbol,
+                        current_price,
+                        fallback_daily_vol,
+                    )
+
+                    if iv_analysis:
+                        iv_col1, iv_col2, iv_col3 = st.columns(3)
+                        annualized_label = (
+                            "Annualized Implied Volatility"
+                            if iv_analysis['is_implied']
+                            else "Annualized Historical Volatility"
+                        )
+                        iv_col1.metric(annualized_label, f"{iv_analysis['annualized_vol']:.2%}")
+                        iv_col2.metric("Expected Daily Move", f"±{iv_analysis['daily_move_pct']:.2%}")
+                        iv_col3.metric("Expected Dollar Move", f"±${iv_analysis['daily_move_amount']:,.2f}")
+
+                        st.success(
+                            f"At a current price of **${current_price:,.2f}**, {quantum_symbol}'s estimated "
+                            f"one-day range is **${iv_analysis['lower_price']:,.2f} to "
+                            f"${iv_analysis['upper_price']:,.2f}**."
+                        )
+                        st.caption(
+                            f"Daily move: {iv_analysis['annualized_vol']:.2%} / sqrt(252) = "
+                            f"{iv_analysis['daily_move_pct']:.2%}. Source: {iv_analysis['source']}"
+                            + (f" (expiration {iv_analysis['expiration']})." if iv_analysis['expiration'] else ".")
+                            + " Conversion rule: daily volatility x sqrt(252) = annualized volatility; "
+                            + "annualized volatility / sqrt(252) = daily volatility. "
+                            + "This is an approximately one-standard-deviation estimate, not a directional forecast or guaranteed range."
+                        )
+                    else:
+                        st.warning("Implied volatility and a historical-volatility fallback were unavailable for this asset.")
                 else:
                     st.warning(f"Could not generate volatility surface for {quantum_symbol}.")
             
@@ -3281,7 +3466,7 @@ def main():
 
         if st.button("Scan Top Derivatives", key="scan_deriv_new"):
             with st.spinner("Scanning top derivative assets..."):
-                df_deriv_new = scan_top_derivative_assets(timeframe=timeframe_deriv_new, flow_timeframe=flow_timeframe_new, volume_timeframe=volume_timeframe_new, top_n=10)
+                df_deriv_new = scan_top_derivative_assets(timeframe=timeframe_deriv_new, flow_timeframe=flow_timeframe_new, volume_timeframe=volume_timeframe_new, top_n=20)
                 if df_deriv_new is not None and not df_deriv_new.empty:
                     st.session_state.df_deriv_new = df_deriv_new
                 else:
@@ -3398,116 +3583,38 @@ def main():
                         else:
                             st.info("No downward moves were detected on the selected date.")
 
-            # --- Lowest Flow (z) Drops across scanned assets ---
-            st.divider()
-            st.subheader("Smallest Flow (z) Drops Across Scanned Assets")
-            st.caption("For each scanned asset, this finds its smallest downward Flow (z) event, then ranks the 20 smallest drop sizes. This may take time because it loads historical data for every scanned asset.")
-            deriv_flow_rank_timeframe = st.selectbox(
-                "Flow (z) drop ranking timeframe",
-                ['5m', '15m', '1h', '4h'],
-                index=2,
-                key='deriv_flow_drop_timeframe'
-            )
-            deriv_flow_rank_config = (tuple(deriv_z_symbols), deriv_flow_rank_timeframe)
+                        # Volume Delta uses the same historical data, timeframe, and selected date as the Z-score analysis.
+                        deriv_z_history['Buy Volume'] = deriv_z_history['volume'].where(deriv_z_history['is_up'], 0)
+                        deriv_z_history['Sell Volume'] = deriv_z_history['volume'].where(~deriv_z_history['is_up'], 0)
+                        deriv_z_history['Volume Delta'] = deriv_z_history['Buy Volume'] - deriv_z_history['Sell Volume']
+                        deriv_z_history['Cumulative Volume Delta'] = deriv_z_history['Volume Delta'].cumsum()
+                        deriv_selected_delta = deriv_z_history.loc[
+                            pd.DatetimeIndex(deriv_z_history.index).date == deriv_z_date
+                        ]
 
-            if st.button("Analyze Smallest Flow (z) Drops for All Scanned Assets", key='analyze_deriv_flow_drops'):
-                flow_drop_rows = []
-                progress_bar = st.progress(0, text="Preparing Flow (z) drop analysis...")
-                for position, flow_asset in enumerate(deriv_z_symbols, start=1):
-                    progress_bar.progress(position / len(deriv_z_symbols), text=f"Analyzing {flow_asset} ({position}/{len(deriv_z_symbols)})...")
-                    flow_history = fetch_and_analyze(flow_asset, timeframe=deriv_flow_rank_timeframe, silent=True)
-                    if flow_history is None or flow_history.empty:
-                        continue
-
-                    flow_history = flow_history.copy()
-                    flow_history['is_up'] = flow_history['close'] >= flow_history['open']
-                    flow_inflow = flow_history['volume'].where(flow_history['is_up'], 0).rolling(window=20).sum()
-                    flow_outflow = flow_history['volume'].where(~flow_history['is_up'], 0).rolling(window=20).sum()
-                    flow_signal = (flow_inflow - flow_outflow) / (flow_inflow + flow_outflow)
-                    flow_z_series = (flow_signal - flow_signal.rolling(window=50).mean()) / flow_signal.rolling(window=50).std()
-                    flow_z_series = flow_z_series.dropna()
-                    flow_changes = flow_z_series.diff().dropna()
-                    downward_events = flow_changes[flow_changes < 0]
-                    if downward_events.empty:
-                        continue
-
-                    drop_sizes = -downward_events
-                    smallest_event_time = drop_sizes.idxmin()
-                    previous_value = float(flow_z_series.shift(1).loc[smallest_event_time])
-                    current_value = float(flow_z_series.loc[smallest_event_time])
-                    flow_drop_rows.append({
-                        'Asset': flow_asset,
-                        'Drop Time': pd.Timestamp(smallest_event_time),
-                        'Previous Flow (z)': previous_value,
-                        'Lowest Flow (z)': current_value,
-                        'Drop Size': previous_value - current_value
-                    })
-
-                progress_bar.empty()
-                st.session_state['deriv_flow_drop_ranking'] = pd.DataFrame(flow_drop_rows)
-                st.session_state['deriv_flow_drop_ranking_config'] = deriv_flow_rank_config
-
-            if st.session_state.get('deriv_flow_drop_ranking_config') == deriv_flow_rank_config:
-                deriv_flow_ranking = st.session_state.get('deriv_flow_drop_ranking', pd.DataFrame()).copy()
-                if not deriv_flow_ranking.empty:
-                    deriv_flow_ranking = deriv_flow_ranking.sort_values('Drop Size', ascending=True).head(20)
-                    deriv_flow_ranking['Drop Time'] = deriv_flow_ranking['Drop Time'].dt.strftime('%Y-%m-%d %H:%M:%S')
-                    st.dataframe(deriv_flow_ranking.style.format({
-                        'Previous Flow (z)': '{:.3f}',
-                        'Lowest Flow (z)': '{:.3f}',
-                        'Drop Size': '{:.3f}'
-                    }), width='stretch')
-
-                    st.subheader("Volume Delta for Ranked Asset")
-                    st.caption("Volume Delta = volume on up candles minus volume on down candles. Positive values indicate net buying pressure; negative values indicate net selling pressure.")
-                    volume_delta_asset = st.selectbox(
-                        "Select an asset from the smallest Flow (z) drop list",
-                        deriv_flow_ranking['Asset'].tolist(),
-                        key='deriv_volume_delta_asset'
-                    )
-                    volume_delta_config = (volume_delta_asset, deriv_flow_rank_timeframe)
-
-                    if st.button(f"Load Volume Delta for {volume_delta_asset}", key='load_deriv_volume_delta'):
-                        with st.spinner(f"Calculating volume delta for {volume_delta_asset}..."):
-                            volume_delta_history = fetch_and_analyze(
-                                volume_delta_asset,
-                                timeframe=deriv_flow_rank_timeframe,
-                                silent=True
+                        if not deriv_selected_delta.empty:
+                            st.subheader("Volume Delta for Selected Date")
+                            st.caption("Volume Delta = volume on up candles minus volume on down candles. Positive values indicate net buying pressure; negative values indicate net selling pressure.")
+                            deriv_delta_metrics = st.columns(3)
+                            deriv_delta_metrics[0].metric(
+                                "Selected-Date Volume Delta",
+                                format_large_number(float(deriv_selected_delta['Volume Delta'].sum()))
                             )
-                        if volume_delta_history is not None and not volume_delta_history.empty:
-                            volume_delta_history = volume_delta_history.copy()
-                            volume_delta_history['Buy Volume'] = volume_delta_history['volume'].where(
-                                volume_delta_history['close'] >= volume_delta_history['open'], 0
+                            deriv_delta_metrics[1].metric(
+                                "Latest Volume Delta",
+                                format_large_number(float(deriv_selected_delta['Volume Delta'].iloc[-1]))
                             )
-                            volume_delta_history['Sell Volume'] = volume_delta_history['volume'].where(
-                                volume_delta_history['close'] < volume_delta_history['open'], 0
+                            deriv_delta_metrics[2].metric(
+                                "Cumulative Volume Delta",
+                                format_large_number(float(deriv_selected_delta['Cumulative Volume Delta'].iloc[-1]))
                             )
-                            volume_delta_history['Volume Delta'] = volume_delta_history['Buy Volume'] - volume_delta_history['Sell Volume']
-                            volume_delta_history['Cumulative Volume Delta'] = volume_delta_history['Volume Delta'].cumsum()
-                            volume_delta_history['20-Candle Volume Delta'] = volume_delta_history['Volume Delta'].rolling(20).sum()
-                            st.session_state['deriv_volume_delta_data'] = volume_delta_history
-                            st.session_state['deriv_volume_delta_config'] = volume_delta_config
-                        else:
-                            st.error(f"Could not fetch data to calculate volume delta for {volume_delta_asset}.")
-
-                    if st.session_state.get('deriv_volume_delta_config') == volume_delta_config:
-                        volume_delta_history = st.session_state['deriv_volume_delta_data']
-                        latest_delta = float(volume_delta_history['Volume Delta'].iloc[-1])
-                        rolling_delta = float(volume_delta_history['20-Candle Volume Delta'].iloc[-1])
-                        cumulative_delta = float(volume_delta_history['Cumulative Volume Delta'].iloc[-1])
-                        delta_metrics = st.columns(3)
-                        delta_metrics[0].metric("Latest Volume Delta", format_large_number(latest_delta))
-                        delta_metrics[1].metric("20-Candle Volume Delta", format_large_number(rolling_delta))
-                        delta_metrics[2].metric("Cumulative Volume Delta", format_large_number(cumulative_delta))
-                        st.line_chart(volume_delta_history['Cumulative Volume Delta'])
-                        st.dataframe(volume_delta_history[['Buy Volume', 'Sell Volume', 'Volume Delta', 'Cumulative Volume Delta']].tail(50).style.format({
-                            'Buy Volume': format_large_number,
-                            'Sell Volume': format_large_number,
-                            'Volume Delta': format_large_number,
-                            'Cumulative Volume Delta': format_large_number
-                        }), width='stretch', height=300)
-                else:
-                    st.info("No Flow (z) drop events were found for the scanned assets.")
+                            st.line_chart(deriv_selected_delta['Cumulative Volume Delta'])
+                            st.dataframe(deriv_selected_delta[['Buy Volume', 'Sell Volume', 'Volume Delta', 'Cumulative Volume Delta']].style.format({
+                                'Buy Volume': format_large_number,
+                                'Sell Volume': format_large_number,
+                                'Volume Delta': format_large_number,
+                                'Cumulative Volume Delta': format_large_number
+                            }), width='stretch', height=300)
 
         # --- 2. Real-Time ETF Order Flow Section ---
         st.divider()
