@@ -184,7 +184,14 @@ def fetch_and_analyze(symbol='BTC/USDT', timeframe='1h', start_date=None, end_da
 
             if start_date:
                 try:
-                    df = yf.download(symbol, start=effective_start_date, interval=yf_interval, progress=False, prepost=True)
+                    df = yf.download(
+                        symbol,
+                        start=effective_start_date,
+                        end=end_date,
+                        interval=yf_interval,
+                        progress=False,
+                        prepost=True,
+                    )
                 except Exception:
                     df = pd.DataFrame()
             else:
@@ -1523,6 +1530,334 @@ def get_implied_volatility_analysis(symbol, current_price, fallback_daily_vol=No
         'source': source,
     }
 
+
+def backtest_flow_momentum_z_strategy(
+    df,
+    symbol,
+    reward_risk=1.5,
+    atr_risk=1.0,
+    trade_start=None,
+    trade_end=None,
+):
+    """Backtest confirmed one-hour Flow Z and Momentum Z expansion signals."""
+    if df is None or df.empty or len(df) < 75:
+        return None, pd.DataFrame(), pd.DataFrame()
+
+    data = df.copy().sort_index()
+    data['is_up'] = data['close'] >= data['open']
+    inflow = data['volume'].where(data['is_up'], 0.0)
+    outflow = data['volume'].where(~data['is_up'], 0.0)
+    rolling_inflow = inflow.rolling(window=20).sum()
+    rolling_outflow = outflow.rolling(window=20).sum()
+    flow_total = (rolling_inflow + rolling_outflow).replace(0, np.nan)
+    data['money_flow_signal'] = (rolling_inflow - rolling_outflow) / flow_total
+
+    def rolling_zscore(series, window=50):
+        rolling_std = series.rolling(window).std().replace(0, np.nan)
+        return (series - series.rolling(window).mean()) / rolling_std
+
+    data['Momentum Z'] = rolling_zscore(data['momentum'])
+    data['Flow Z'] = rolling_zscore(data['money_flow_signal'])
+    data['Flow Z Change'] = data['Flow Z'].diff()
+    data['Momentum Z Change'] = data['Momentum Z'].diff()
+    data['Flow Move Size'] = data['Flow Z Change'].abs()
+    data['Large Flow Threshold'] = data['Flow Move Size'].rolling(20).mean().shift(1)
+    data['Flow Move Size Change'] = data['Flow Move Size'].diff()
+
+    # Direction must agree across Flow Z and Momentum Z, and the current Flow Z
+    # move must be larger than the recent average move.
+    large_flow_move = data['Flow Move Size'] > data['Large Flow Threshold']
+    data['Long Signal'] = (
+        large_flow_move
+        & (data['Flow Z Change'] > 0)
+        & (data['Momentum Z Change'] > 0)
+    )
+    data['Short Signal'] = (
+        large_flow_move
+        & (data['Flow Z Change'] < 0)
+        & (data['Momentum Z Change'] < 0)
+    )
+
+    # Extra candles may be fetched before the requested period solely to warm up
+    # rolling indicators. Entries are restricted to the user's selected dates.
+    trade_window = pd.Series(True, index=data.index)
+    if trade_start is not None:
+        trade_window &= data.index >= pd.Timestamp(trade_start)
+    if trade_end is not None:
+        trade_window &= data.index < pd.Timestamp(trade_end)
+    data['Long Signal'] &= trade_window
+    data['Short Signal'] &= trade_window
+
+    trades = []
+    position = None
+
+    # A signal is known at candle i; entry occurs at candle i+1 open.
+    for i in range(len(data) - 1):
+        signal_bar = data.iloc[i]
+        next_bar = data.iloc[i + 1]
+        exited_this_bar = False
+
+        if position is not None:
+            exit_price = None
+            exit_reason = None
+            if position['Direction'] == 'LONG':
+                stop_hit = float(next_bar['low']) <= position['Stop Price']
+                target_hit = float(next_bar['high']) >= position['Target Price']
+                if stop_hit:
+                    exit_price, exit_reason = position['Stop Price'], 'Stop Loss'
+                elif target_hit:
+                    exit_price, exit_reason = position['Target Price'], 'Take Profit'
+            else:
+                stop_hit = float(next_bar['high']) >= position['Stop Price']
+                target_hit = float(next_bar['low']) <= position['Target Price']
+                if stop_hit:
+                    exit_price, exit_reason = position['Stop Price'], 'Stop Loss'
+                elif target_hit:
+                    exit_price, exit_reason = position['Target Price'], 'Take Profit'
+
+            if exit_price is not None:
+                risk_amount = abs(position['Entry Price'] - position['Stop Price'])
+                pnl_amount = (
+                    exit_price - position['Entry Price']
+                    if position['Direction'] == 'LONG'
+                    else position['Entry Price'] - exit_price
+                )
+                position.update({
+                    'Exit Time': data.index[i + 1],
+                    'Exit Price': exit_price,
+                    'Exit Reason': exit_reason,
+                    'R Multiple': pnl_amount / risk_amount if risk_amount > 0 else 0.0,
+                    'Return %': (
+                        pnl_amount / position['Entry Price'] * 100
+                        if position['Entry Price'] > 0 else 0.0
+                    ),
+                })
+                trades.append(position)
+                position = None
+                exited_this_bar = True
+
+        if (
+            position is None
+            and not exited_this_bar
+            and (bool(signal_bar['Long Signal']) or bool(signal_bar['Short Signal']))
+        ):
+            atr = float(signal_bar['atr14']) if pd.notna(signal_bar['atr14']) else 0.0
+            entry_price = float(next_bar['open'])
+            risk_distance = atr * atr_risk
+            if entry_price <= 0 or risk_distance <= 0:
+                continue
+
+            direction = 'LONG' if bool(signal_bar['Long Signal']) else 'SHORT'
+            if direction == 'LONG':
+                stop_price = entry_price - risk_distance
+                target_price = entry_price + (risk_distance * reward_risk)
+            else:
+                stop_price = entry_price + risk_distance
+                target_price = entry_price - (risk_distance * reward_risk)
+
+            position = {
+                'Symbol': symbol,
+                'Direction': direction,
+                'Signal Time': data.index[i],
+                'Entry Time': data.index[i + 1],
+                'Entry Price': entry_price,
+                'Stop Price': stop_price,
+                'Target Price': target_price,
+                'Flow Z': float(signal_bar['Flow Z']),
+                'Flow Z Change': float(signal_bar['Flow Z Change']),
+                'Flow Move Size': float(signal_bar['Flow Move Size']),
+                'Flow Move Size Change': float(signal_bar['Flow Move Size Change']),
+                'Momentum Z': float(signal_bar['Momentum Z']),
+                'Momentum Z Change': float(signal_bar['Momentum Z Change']),
+            }
+
+            # The entry is at the next candle's open, so its high/low can hit the
+            # stop or target during that same candle.
+            if direction == 'LONG':
+                entry_stop_hit = float(next_bar['low']) <= stop_price
+                entry_target_hit = float(next_bar['high']) >= target_price
+            else:
+                entry_stop_hit = float(next_bar['high']) >= stop_price
+                entry_target_hit = float(next_bar['low']) <= target_price
+
+            if entry_stop_hit or entry_target_hit:
+                exit_price = stop_price if entry_stop_hit else target_price
+                exit_reason = 'Stop Loss' if entry_stop_hit else 'Take Profit'
+                pnl_amount = (
+                    exit_price - entry_price
+                    if direction == 'LONG'
+                    else entry_price - exit_price
+                )
+                position.update({
+                    'Exit Time': data.index[i + 1],
+                    'Exit Price': exit_price,
+                    'Exit Reason': exit_reason,
+                    'R Multiple': pnl_amount / risk_distance,
+                    'Return %': pnl_amount / entry_price * 100,
+                })
+                trades.append(position)
+                position = None
+
+    if position is not None:
+        final_price = float(data['close'].iloc[-1])
+        risk_amount = abs(position['Entry Price'] - position['Stop Price'])
+        pnl_amount = (
+            final_price - position['Entry Price']
+            if position['Direction'] == 'LONG'
+            else position['Entry Price'] - final_price
+        )
+        position.update({
+            'Exit Time': data.index[-1],
+            'Exit Price': final_price,
+            'Exit Reason': 'End of Data',
+            'R Multiple': pnl_amount / risk_amount if risk_amount > 0 else 0.0,
+            'Return %': pnl_amount / position['Entry Price'] * 100,
+        })
+        trades.append(position)
+
+    trades_df = pd.DataFrame(trades)
+    if trades_df.empty:
+        stats = {
+            'Symbol': symbol, 'Trades': 0, 'Win Rate %': 0.0,
+            'Net R': 0.0, 'Average R': 0.0, 'Profit Factor': 0.0,
+        }
+    else:
+        wins = trades_df['R Multiple'] > 0
+        gross_profit = trades_df.loc[trades_df['R Multiple'] > 0, 'R Multiple'].sum()
+        gross_loss = abs(trades_df.loc[trades_df['R Multiple'] < 0, 'R Multiple'].sum())
+        stats = {
+            'Symbol': symbol,
+            'Trades': int(len(trades_df)),
+            'Win Rate %': float(wins.mean() * 100),
+            'Net R': float(trades_df['R Multiple'].sum()),
+            'Average R': float(trades_df['R Multiple'].mean()),
+            'Profit Factor': float(gross_profit / gross_loss) if gross_loss > 0 else np.inf,
+        }
+
+    return stats, trades_df, data
+
+
+def calculate_zone_battle_scores(df, observation_bars=10, max_zones=30):
+    """Score completed bullish and bearish FVG reactions using the Zone Battle model."""
+    if df is None or df.empty or len(df) < 75:
+        return pd.DataFrame(), pd.DataFrame()
+
+    data = df.copy().sort_index()
+
+    def rolling_zscore(series, window=50):
+        rolling_std = series.rolling(window).std().replace(0, np.nan)
+        return (series - series.rolling(window).mean()) / rolling_std
+
+    # ATR(15), matching the reaction normalization requested for Rz.
+    previous_close = data['close'].shift(1)
+    true_range = pd.concat([
+        data['high'] - data['low'],
+        (data['high'] - previous_close).abs(),
+        (data['low'] - previous_close).abs(),
+    ], axis=1).max(axis=1)
+    data['ATR15'] = true_range.ewm(alpha=1 / 15, adjust=False).mean()
+
+    # Use the same historical Flow Z and Momentum Z construction as the US Indices chart.
+    is_up = data['close'] >= data['open']
+    inflow = data['volume'].where(is_up, 0.0)
+    outflow = data['volume'].where(~is_up, 0.0)
+    rolling_inflow = inflow.rolling(20).sum()
+    rolling_outflow = outflow.rolling(20).sum()
+    flow_total = (rolling_inflow + rolling_outflow).replace(0, np.nan)
+    data['Money Flow Signal'] = (rolling_inflow - rolling_outflow) / flow_total
+    data['Flow Z'] = rolling_zscore(data['Money Flow Signal'])
+    data['Momentum Z'] = rolling_zscore(data['momentum'])
+
+    bullish_fvg = (data['low'] > data['high'].shift(2)) & (data['close'] > data['open'])
+    bearish_fvg = (data['high'] < data['low'].shift(2)) & (data['close'] < data['open'])
+    zone_candidates = []
+
+    for position in np.flatnonzero((bullish_fvg | bearish_fvg).to_numpy()):
+        if position < 2:
+            continue
+        if bool(bullish_fvg.iloc[position]):
+            zone_type = 'Bullish'
+            zone_bottom = float(data['high'].iloc[position - 2])
+            zone_top = float(data['low'].iloc[position])
+        else:
+            zone_type = 'Bearish'
+            zone_bottom = float(data['high'].iloc[position])
+            zone_top = float(data['low'].iloc[position - 2])
+
+        if zone_top <= zone_bottom:
+            continue
+        zone_candidates.append((position, zone_type, zone_bottom, zone_top))
+
+    results = []
+    for formed_at, zone_type, zone_bottom, zone_top in zone_candidates:
+        entry_position = None
+        for candidate in range(formed_at + 1, len(data)):
+            candle = data.iloc[candidate]
+            if float(candle['low']) <= zone_top and float(candle['high']) >= zone_bottom:
+                entry_position = candidate
+                break
+        if entry_position is None:
+            continue
+
+        reaction_end = entry_position + int(observation_bars) - 1
+        if reaction_end >= len(data):
+            continue
+        reaction = data.iloc[entry_position:reaction_end + 1]
+        atr15 = float(data['ATR15'].iloc[entry_position])
+        if not np.isfinite(atr15) or atr15 <= 0:
+            continue
+
+        entry_price = (zone_bottom + zone_top) / 2
+        reaction_close = float(reaction['close'].iloc[-1])
+        reaction_score = (reaction_close - entry_price) / atr15
+        flow_z = float(reaction['Flow Z'].iloc[-1]) if pd.notna(reaction['Flow Z'].iloc[-1]) else 0.0
+        momentum_z = (
+            float(reaction['Momentum Z'].iloc[-1])
+            if pd.notna(reaction['Momentum Z'].iloc[-1]) else 0.0
+        )
+
+        # +1 means price was above the zone, -1 below it, and 0 inside it.
+        location = np.where(
+            reaction['close'] > zone_top,
+            1.0,
+            np.where(reaction['close'] < zone_bottom, -1.0, 0.0),
+        )
+        acceptance_score = float(np.mean(location))
+        battle_score = (
+            (0.40 * reaction_score)
+            + (0.30 * flow_z)
+            + (0.20 * momentum_z)
+            + (0.10 * acceptance_score)
+        )
+        winner = (
+            'Strong Buyer Victory' if battle_score > 1.0
+            else 'Strong Seller Victory' if battle_score < -1.0
+            else 'Battle Unresolved'
+        )
+
+        results.append({
+            'Zone Formed': data.index[formed_at],
+            'Zone Entry': data.index[entry_position],
+            'Zone Type': zone_type,
+            'Zone Bottom': zone_bottom,
+            'Zone Top': zone_top,
+            'Entry Price': entry_price,
+            'Reaction Close': reaction_close,
+            'Bars Observed': int(len(reaction)),
+            'Reaction Rz': reaction_score,
+            'Flow Fz': flow_z,
+            'Momentum Mz': momentum_z,
+            'Acceptance Az': acceptance_score,
+            'Battle Score': battle_score,
+            'Result': winner,
+        })
+
+    results_df = pd.DataFrame(results)
+    if not results_df.empty:
+        results_df = results_df.sort_values('Zone Entry', ascending=False).head(max_zones)
+    return results_df, data
+
+
 def plot_volatility_surface(df, symbol):
     """
     Computes and plots the "quantum" volatility surface and classical distribution.
@@ -1836,9 +2171,17 @@ def main():
     polygon_api_key = st.sidebar.text_input("Polygon.io API Key", type="password")
 
     # Tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13 = st.tabs(["📊 Market Overview", "⚡ Top Crypto Ranking", "🔥 Derivatives Trend Scan", "🛠️ Backtest Engine", "🏛️ US Indices", "🎯 Composite Derivative Backtest", "🌌 Volatility Quantum Analysis", "📈 Volatility Dashboard", "🇬🇧 GBP/USD Quantum Backtest", "🛡️ Options Analysis (GEX)", "Crypto GEX (Polygon)", "🆕 Derivative Crypto", "📢 Index Spike Alert"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "🔥 Derivatives Trend Scan",
+        "🛠️ Backtest Engine",
+        "🏛️ US Indices",
+        "🌌 Volatility Quantum Analysis",
+        "📈 Volatility Dashboard",
+        "🆕 Derivative Crypto",
+        "🧪 Index & Gold Z Backtest",
+    ])
 
-    with tab1: # This is the "Market Overview" tab
+    if False:  # Removed: Market Overview
         st.subheader(f"Live Analysis: {symbol}")
         if st.button("Analyze Current Market"):
             df = fetch_and_analyze(symbol)
@@ -1857,7 +2200,7 @@ def main():
             else:
                 st.error(f"Could not load data for {symbol}. Please check the ticker.")
 
-    with tab2:
+    if False:  # Removed: Top Crypto Ranking
         st.subheader("Top Crypto Momentum Ranking")
         
         col1, col2 = st.columns([1, 4])
@@ -1954,7 +2297,7 @@ def main():
             else:
                 st.warning(f"**Verdict:** Momentum is currently **MIXED / CONSOLIDATING** ⚖️")
 
-    with tab3:
+    with tab1:
         st.subheader("Top Derivatives Trend Scan")
         st.write("Scan the top Binance USDT perpetual contract derivatives and compare momentum with Z-score.")
         timeframe_deriv = st.selectbox("Select timeframe", ["5m", "15m", "1h", "4h"], index=2)
@@ -2203,7 +2546,7 @@ def main():
                     else:
                         st.warning(f"Could not generate volatility surface for {quantum_symbol_deriv}. Not enough data available.")
             
-    with tab4:
+    with tab2:
         st.subheader(f"Strategy Backtest: {symbol}")
         if st.button("Run Backtest"):
             df = fetch_and_analyze(symbol, start_date=backtest_start.strftime('%Y-%m-%d'))
@@ -2253,7 +2596,7 @@ def main():
                         
                     st.dataframe(styler)
 
-    with tab5:
+    with tab3:
         st.subheader("🏛️ Top US Indices & VIX Overview")
         st.write("Tracking S&P 500 (SPY), Nasdaq 100 (QQQ), Dow Jones (DIA), Volatility Index (^VIX), and US Dollar Index (DX-Y.NYB).")
         # Timeframe selector for indices/stocks (15m, 1h, 4h)
@@ -2773,6 +3116,176 @@ def main():
                         else:
                             st.info("No downward moves were detected on the selected date.")
 
+        # --- Zone Battle Score ---
+        st.divider()
+        st.subheader("⚔️ Zone Battle Score")
+        st.caption(
+            "Measures who won after price entered a bullish or bearish FVG zone. "
+            "Battle Score = 0.40(Rz) + 0.30(Fz) + 0.20(Mz) + 0.10(Az)."
+        )
+
+        zone_col1, zone_col2, zone_col3 = st.columns(3)
+        with zone_col1:
+            zone_asset = st.selectbox(
+                "Zone Battle asset",
+                options=[
+                    'SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB',
+                    '^FTSE', 'XAUUSD', 'GBPUSD=X',
+                ],
+                index=0,
+                key='zone_battle_asset',
+            )
+        with zone_col2:
+            zone_timeframe = st.selectbox(
+                "Zone Battle timeframe",
+                options=['5m', '15m', '1h', '4h', '1d'],
+                index=2,
+                key='zone_battle_timeframe',
+            )
+        with zone_col3:
+            zone_observation_bars = st.number_input(
+                "Reaction observation candles",
+                min_value=3,
+                max_value=50,
+                value=10,
+                step=1,
+                key='zone_observation_bars',
+            )
+
+        zone_config = (
+            zone_asset,
+            zone_timeframe,
+            int(zone_observation_bars),
+        )
+        if st.button(
+            f"Analyze Zone Battles for {zone_asset}",
+            key='run_zone_battle_analysis',
+        ):
+            with st.spinner(
+                f"Detecting {zone_asset} zones on {zone_timeframe} candles..."
+            ):
+                zone_source_df = fetch_and_analyze(
+                    zone_asset,
+                    timeframe=zone_timeframe,
+                    silent=True,
+                )
+                zone_results, zone_indicator_data = calculate_zone_battle_scores(
+                    zone_source_df,
+                    observation_bars=int(zone_observation_bars),
+                    max_zones=50,
+                )
+            st.session_state['zone_battle_results'] = zone_results
+            st.session_state['zone_battle_indicators'] = zone_indicator_data
+            st.session_state['zone_battle_config'] = zone_config
+
+        saved_zone_config = st.session_state.get('zone_battle_config')
+        if saved_zone_config == zone_config:
+            zone_results = st.session_state.get(
+                'zone_battle_results', pd.DataFrame()
+            )
+            if not zone_results.empty:
+                latest_zone = zone_results.sort_values(
+                    'Zone Entry', ascending=False
+                ).iloc[0]
+                battle_col1, battle_col2, battle_col3, battle_col4 = st.columns(4)
+                battle_col1.metric(
+                    "Latest Battle Score",
+                    f"{latest_zone['Battle Score']:+.2f}",
+                )
+                battle_col2.metric("Result", latest_zone['Result'])
+                battle_col3.metric("Zone Type", latest_zone['Zone Type'])
+                battle_col4.metric(
+                    "Zone Range",
+                    f"{latest_zone['Zone Bottom']:.2f} – {latest_zone['Zone Top']:.2f}",
+                )
+
+                score_chart_df = zone_results.sort_values('Zone Entry')
+                zone_fig = go.Figure()
+                zone_fig.add_trace(go.Scatter(
+                    x=score_chart_df['Zone Entry'],
+                    y=score_chart_df['Battle Score'],
+                    mode='lines+markers',
+                    name='Battle Score',
+                    marker=dict(
+                        color=np.where(
+                            score_chart_df['Battle Score'] > 1,
+                            '#22c55e',
+                            np.where(
+                                score_chart_df['Battle Score'] < -1,
+                                '#ef4444',
+                                '#f59e0b',
+                            ),
+                        ),
+                        size=8,
+                    ),
+                ))
+                zone_fig.add_hline(
+                    y=1.0,
+                    line_dash='dash',
+                    line_color='#22c55e',
+                    annotation_text='Strong Buyer Victory',
+                )
+                zone_fig.add_hline(
+                    y=-1.0,
+                    line_dash='dash',
+                    line_color='#ef4444',
+                    annotation_text='Strong Seller Victory',
+                )
+                zone_fig.update_layout(
+                    title=f'{zone_asset} Zone Battle History ({zone_timeframe})',
+                    xaxis_title='Zone Entry Time',
+                    yaxis_title='Battle Score',
+                    template='plotly_dark',
+                )
+                st.plotly_chart(zone_fig, width='stretch')
+
+                zone_display_columns = [
+                    'Zone Entry', 'Zone Type', 'Zone Bottom', 'Zone Top',
+                    'Entry Price', 'Reaction Close', 'Bars Observed',
+                    'Reaction Rz', 'Flow Fz', 'Momentum Mz',
+                    'Acceptance Az', 'Battle Score', 'Result',
+                ]
+                zone_styler = zone_results[zone_display_columns].style.format({
+                    'Zone Bottom': '{:.2f}',
+                    'Zone Top': '{:.2f}',
+                    'Entry Price': '{:.2f}',
+                    'Reaction Close': '{:.2f}',
+                    'Reaction Rz': '{:+.2f}',
+                    'Flow Fz': '{:+.2f}',
+                    'Momentum Mz': '{:+.2f}',
+                    'Acceptance Az': '{:+.2f}',
+                    'Battle Score': '{:+.2f}',
+                }).map(
+                    color_metrics,
+                    subset=[
+                        'Reaction Rz', 'Flow Fz', 'Momentum Mz',
+                        'Acceptance Az', 'Battle Score',
+                    ],
+                )
+                st.dataframe(zone_styler, width='stretch', hide_index=True)
+
+                with st.expander("How the Zone Battle components are calculated"):
+                    st.markdown(
+                        """
+- **Reaction Rz:** `(reaction close - zone entry price) / ATR(15)`.
+- **Flow Fz:** the Historical Flow Z-score at the end of the reaction window.
+- **Momentum Mz:** the Historical Momentum Z-score at the end of the reaction window.
+- **Acceptance Az:** average candle location: `+1` above the zone, `0` inside it, and `-1` below it.
+- **Battle Score > +1:** strong buyer victory.
+- **Battle Score < -1:** strong seller victory.
+- **Between -1 and +1:** battle unresolved.
+                        """
+                    )
+            else:
+                st.info(
+                    "No completed FVG zone reactions were found for this asset and timeframe."
+                )
+        elif saved_zone_config is not None:
+            st.info(
+                "The asset, timeframe, or observation window changed. "
+                "Run the analysis again to refresh the Zone Battle results."
+            )
+
         # --- Volume Delta for US Indices and Macro Assets ---
         st.divider()
         st.subheader("Volume Delta: SPY, QQQ, DIA, XAU/USD, and FTSE")
@@ -2969,7 +3482,7 @@ def main():
         else:
             st.info("Click 'Refresh Stocks Data' to load the latest metrics for Top US Stocks.")
 
-    with tab6:
+    if False:  # Removed: Composite Derivative Backtest
         st.subheader("🎯 Composite Derivative Backtest")
         st.write("Backtest all composite derivative entry/exit signals: MACD, ATR, MA20, money flow, and volume ratio.")
         
@@ -3040,7 +3553,7 @@ def main():
             else:
                 st.warning("Please enter a valid symbol.")
 
-    with tab7:
+    with tab4:
         st.subheader("🌌 Volatility Quantum Analysis")
         st.info("""
         This tab visualizes the volatility term structure using a "quantum probability surface" as described.
@@ -3146,7 +3659,7 @@ def main():
                 time.sleep(301) # Wait 5 minutes
                 st.rerun()
 
-    with tab8:
+    if False:  # Removed: GBP/USD Quantum Backtest
         st.subheader("🇬🇧 GBP/USD Volatility Quantum Backtest")
         st.write("This backtest uses the Volatility Quantum Analysis strategy specifically for the GBP/USD forex pair.")
         st.info("A trade is opened on a 'MOVE UP' or 'MOVE DOWN' signal and closed when the signal returns to 'CONSOLIDATE / CHOP'.")
@@ -3206,7 +3719,7 @@ def main():
                 else:
                     st.error(f"Could not run backtest for {gbp_symbol}. Ensure data is available for the selected period.")
 
-    with tab8:
+    with tab5:
         st.subheader("📈 Volatility Dashboard (GEX Proxy)")
         st.info("""
         This dashboard visualizes key price levels that often act like high Gamma Exposure zones, influencing volatility.
@@ -3277,7 +3790,7 @@ def main():
                 else:
                     st.warning(f"Could not fetch data for {gamma_asset} on the {gamma_tf} timeframe.")
 
-    with tab10:
+    if False:  # Removed: Options Gamma Exposure
         st.subheader("🛡️ Options Gamma Exposure (GEX)")
         st.info("""
         This tool analyzes real options data to calculate the total Gamma Exposure (GEX) of market makers. High GEX can suppress volatility, while certain strike levels can act as 'magnets' or 'pins' for the price.
@@ -3393,7 +3906,7 @@ def main():
                     fig.update_layout(title=f'Gamma Exposure Profile for {gex_asset}', xaxis_title='Strike Price', yaxis_title='Gamma Exposure (Notional)', template='plotly_dark')
                     st.plotly_chart(fig, width='stretch')
 
-    with tab11:
+    if False:  # Removed: Crypto GEX (Polygon)
         st.subheader("🛡️ Crypto Gamma Exposure (GEX) via Binance")
         st.info("""
         This tool analyzes real options data for crypto assets to calculate the total Gamma Exposure (GEX) of market makers.
@@ -3446,7 +3959,7 @@ def main():
         else:
             st.warning("Run a derivative scan in the 'Derivatives Trend Scan' tab first to populate the list of available crypto assets.")
 
-    with tab12:
+    with tab6:
         st.subheader("🔥 Derivative Crypto Analysis")
         st.write("Scan top Binance derivatives, contextualized with real-time ETF order flow from major US markets.")
 
@@ -3696,7 +4209,179 @@ def main():
         else:
             st.info("Run a derivative or ETF scan to populate the asset list for historical analysis.")
 
-    with tab13:
+    with tab7:
+        st.subheader("🧪 SPY, QQQ & XAUUSD Flow/Momentum Z Backtest")
+        st.write(
+            "Backtests the Historical Z-Score logic from the US Indices tab on fixed "
+            "1-hour candles. A trade requires an above-average Flow Z move confirmed "
+            "by Momentum Z in the same direction."
+        )
+        st.info(
+            "**Entry:** next candle open after confirmation. "
+            "**Stop:** 1 ATR (1R). **Take profit:** 1.5 ATR (1.5R). "
+            "If stop and target are both touched in one candle, the stop is counted first."
+        )
+
+        earliest_zbt_date = (datetime.now() - timedelta(days=59)).date()
+        latest_zbt_date = datetime.now().date()
+        default_zbt_start = (datetime.now() - timedelta(days=30)).date()
+
+        zbt_col1, zbt_col2, zbt_col3, zbt_col4 = st.columns(4)
+        with zbt_col1:
+            zbt_asset = st.selectbox(
+                "Select asset",
+                options=['SPY', 'QQQ', 'XAUUSD'],
+                key="zbt_asset",
+            )
+        with zbt_col2:
+            zbt_start_date = st.date_input(
+                "Backtest start date",
+                value=default_zbt_start,
+                min_value=earliest_zbt_date,
+                max_value=latest_zbt_date,
+                key="zbt_start_date",
+            )
+        with zbt_col3:
+            zbt_end_date = st.date_input(
+                "Backtest end date",
+                value=latest_zbt_date,
+                min_value=earliest_zbt_date,
+                max_value=latest_zbt_date,
+                key="zbt_end_date",
+            )
+        with zbt_col4:
+            zbt_atr_risk = st.number_input(
+                "Stop distance (ATR multiple)",
+                min_value=0.25,
+                max_value=5.0,
+                value=1.0,
+                step=0.25,
+                key="zbt_atr_risk",
+            )
+
+        if st.button(f"Run {zbt_asset} Z Backtest", key="run_index_gold_zbt"):
+            if zbt_start_date > zbt_end_date:
+                st.error("The backtest start date must be on or before the end date.")
+            else:
+                # Fetch earlier candles for the 50-bar Z-score and 20-bar flow
+                # warm-up, while restricting actual entries to the selected dates.
+                warmup_start = max(
+                    earliest_zbt_date,
+                    zbt_start_date - timedelta(days=14),
+                )
+                end_exclusive = zbt_end_date + timedelta(days=1)
+
+                with st.spinner(
+                    f"Running {zbt_asset} 1-hour Z-score backtest..."
+                ):
+                    asset_df = fetch_and_analyze(
+                        zbt_asset,
+                        timeframe='1h',
+                        start_date=warmup_start.strftime('%Y-%m-%d'),
+                        end_date=end_exclusive.strftime('%Y-%m-%d'),
+                        silent=True,
+                    )
+                    stats, trades_df, signal_df = backtest_flow_momentum_z_strategy(
+                        asset_df,
+                        zbt_asset,
+                        reward_risk=1.5,
+                        atr_risk=float(zbt_atr_risk),
+                        trade_start=zbt_start_date,
+                        trade_end=end_exclusive,
+                    )
+
+                st.session_state['index_gold_zbt_summary'] = (
+                    pd.DataFrame([stats]) if stats is not None else pd.DataFrame()
+                )
+                st.session_state['index_gold_zbt_trades'] = trades_df
+                st.session_state['index_gold_zbt_signals'] = (
+                    {zbt_asset: signal_df} if not signal_df.empty else {}
+                )
+                st.session_state['index_gold_zbt_config'] = {
+                    'asset': zbt_asset,
+                    'start_date': zbt_start_date,
+                    'end_date': zbt_end_date,
+                    'atr_risk': zbt_atr_risk,
+                }
+
+        zbt_summary = st.session_state.get('index_gold_zbt_summary', pd.DataFrame())
+        if not zbt_summary.empty:
+            completed_config = st.session_state.get('index_gold_zbt_config', {})
+            completed_asset = completed_config.get('asset', zbt_summary.iloc[0]['Symbol'])
+            completed_start = completed_config.get('start_date')
+            completed_end = completed_config.get('end_date')
+            st.subheader(f"{completed_asset} Backtest Results")
+            if completed_start and completed_end:
+                st.caption(
+                    f"Selected period: {completed_start:%B %d, %Y} through "
+                    f"{completed_end:%B %d, %Y} (1-hour timeframe)."
+                )
+            summary_styler = zbt_summary.style.format({
+                'Win Rate %': '{:.1f}%',
+                'Net R': '{:+.2f}R',
+                'Average R': '{:+.2f}R',
+                'Profit Factor': lambda value: '∞' if np.isinf(value) else f'{value:.2f}',
+            }).map(color_metrics, subset=['Net R', 'Average R'])
+            st.dataframe(summary_styler, width='stretch', hide_index=True)
+
+            zbt_trades = st.session_state.get('index_gold_zbt_trades', pd.DataFrame())
+            if not zbt_trades.empty:
+                total_trades = len(zbt_trades)
+                combined_net_r = float(zbt_trades['R Multiple'].sum())
+                combined_win_rate = float((zbt_trades['R Multiple'] > 0).mean() * 100)
+                metric1, metric2, metric3 = st.columns(3)
+                metric1.metric("Total Trades", total_trades)
+                metric2.metric("Win Rate", f"{combined_win_rate:.1f}%")
+                metric3.metric("Net Result", f"{combined_net_r:+.2f}R")
+
+                st.subheader("Trade Log")
+                trade_columns = [
+                    'Symbol', 'Direction', 'Signal Time', 'Entry Time', 'Entry Price',
+                    'Stop Price', 'Target Price', 'Exit Time', 'Exit Price',
+                    'Exit Reason', 'R Multiple', 'Return %', 'Flow Z',
+                    'Flow Z Change', 'Flow Move Size', 'Flow Move Size Change',
+                    'Momentum Z', 'Momentum Z Change',
+                ]
+                trade_styler = zbt_trades[trade_columns].sort_values(
+                    'Entry Time', ascending=False
+                ).style.format({
+                    'Entry Price': '{:.2f}',
+                    'Stop Price': '{:.2f}',
+                    'Target Price': '{:.2f}',
+                    'Exit Price': '{:.2f}',
+                    'R Multiple': '{:+.2f}R',
+                    'Return %': '{:+.2f}%',
+                    'Flow Z': '{:.2f}',
+                    'Flow Z Change': '{:+.2f}',
+                    'Flow Move Size': '{:.2f}',
+                    'Flow Move Size Change': '{:+.2f}',
+                    'Momentum Z': '{:.2f}',
+                    'Momentum Z Change': '{:+.2f}',
+                }).map(color_metrics, subset=['R Multiple', 'Return %'])
+                st.dataframe(trade_styler, width='stretch', hide_index=True)
+            else:
+                st.info("No confirmed trades occurred during this lookback period.")
+
+            signal_assets = list(
+                st.session_state.get('index_gold_zbt_signals', {}).keys()
+            )
+            if signal_assets:
+                selected_signal_asset = st.selectbox(
+                    "Inspect Flow Z and Momentum Z signals",
+                    signal_assets,
+                    key="zbt_signal_asset",
+                )
+                signal_df = st.session_state['index_gold_zbt_signals'][
+                    selected_signal_asset
+                ]
+                signal_chart = signal_df[
+                    ['Flow Z', 'Momentum Z', 'Large Flow Threshold']
+                ].dropna().tail(300)
+                st.line_chart(signal_chart)
+        else:
+            st.caption("Select one asset and date range, then run its backtest.")
+
+    if False:  # Removed: Index Spike Alert
         st.subheader("📢 Index Spike Alert Engine")
         st.info("""
         This tool provides historical data and real-time alerts for simultaneous spikes in VIX, SPY, and QQQ.
