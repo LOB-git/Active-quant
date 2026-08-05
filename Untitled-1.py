@@ -1858,6 +1858,121 @@ def calculate_zone_battle_scores(df, observation_bars=10, max_zones=30):
     return results_df, data
 
 
+def calculate_liquidity_zones(df, price_bins=24, top_zones=8):
+    """Rank price bands by participation, flow, compression, and price acceptance."""
+    if df is None or df.empty or len(df) < 50:
+        return pd.DataFrame(), pd.DataFrame()
+
+    data = df.copy().sort_index().tail(750)
+    required = {'open', 'high', 'low', 'close', 'volume'}
+    if not required.issubset(data.columns):
+        return pd.DataFrame(), pd.DataFrame()
+
+    for column in required:
+        data[column] = pd.to_numeric(data[column], errors='coerce')
+    data = data.dropna(subset=list(required))
+    if len(data) < 50 or float(data['high'].max()) <= float(data['low'].min()):
+        return pd.DataFrame(), pd.DataFrame()
+
+    previous_close = data['close'].shift(1)
+    true_range = pd.concat([
+        data['high'] - data['low'],
+        (data['high'] - previous_close).abs(),
+        (data['low'] - previous_close).abs(),
+    ], axis=1).max(axis=1)
+    data['ATR14'] = true_range.ewm(alpha=1 / 14, adjust=False).mean()
+    data['Typical Price'] = (data['high'] + data['low'] + data['close']) / 3
+    cumulative_volume = data['volume'].cumsum().replace(0, np.nan)
+    data['VWAP'] = (data['Typical Price'] * data['volume']).cumsum() / cumulative_volume
+    data['Signed Volume'] = np.where(
+        data['close'] >= data['open'], data['volume'], -data['volume']
+    )
+    data['ATR Compression'] = -(
+        (data['ATR14'] - data['ATR14'].rolling(50, min_periods=20).mean())
+        / data['ATR14'].rolling(50, min_periods=20).std().replace(0, np.nan)
+    )
+    data['VWAP Distance'] = (
+        (data['Typical Price'] - data['VWAP']).abs()
+        / data['ATR14'].replace(0, np.nan)
+    )
+    swing_high = (
+        (data['high'] >= data['high'].shift(1))
+        & (data['high'] >= data['high'].shift(-1))
+    )
+    swing_low = (
+        (data['low'] <= data['low'].shift(1))
+        & (data['low'] <= data['low'].shift(-1))
+    )
+    data['Swing'] = (swing_high | swing_low).astype(int)
+
+    edges = np.linspace(
+        float(data['low'].min()), float(data['high'].max()), int(price_bins) + 1
+    )
+    data['Price Band'] = pd.cut(
+        data['Typical Price'], bins=edges, include_lowest=True, labels=False
+    )
+    grouped = data.dropna(subset=['Price Band']).groupby('Price Band', observed=True)
+    zones = grouped.agg(
+        Volume=('volume', 'sum'),
+        Signed_Volume=('Signed Volume', 'sum'),
+        ATR_Compression=('ATR Compression', 'mean'),
+        Swing_Density=('Swing', 'sum'),
+        Time_at_Price=('close', 'size'),
+        VWAP_Distance=('VWAP Distance', 'mean'),
+    ).reset_index()
+    if zones.empty:
+        return pd.DataFrame(), data
+
+    zones['Price Band'] = zones['Price Band'].astype(int)
+    zones['Zone Bottom'] = zones['Price Band'].map(lambda value: edges[value])
+    zones['Zone Top'] = zones['Price Band'].map(lambda value: edges[value + 1])
+    zones['Zone Midpoint'] = (zones['Zone Bottom'] + zones['Zone Top']) / 2
+    zones['Order Flow Imbalance'] = (
+        zones['Signed_Volume'] / zones['Volume'].replace(0, np.nan)
+    ).fillna(0.0)
+
+    def cross_section_zscore(series):
+        clean = pd.to_numeric(series, errors='coerce').fillna(0.0)
+        standard_deviation = clean.std(ddof=0)
+        if not np.isfinite(standard_deviation) or standard_deviation == 0:
+            return pd.Series(0.0, index=clean.index)
+        return (clean - clean.mean()) / standard_deviation
+
+    zones['Volume Z-Score'] = cross_section_zscore(np.log1p(zones['Volume']))
+    zones['Flow Strength Z'] = cross_section_zscore(zones['Order Flow Imbalance'].abs())
+    zones['ATR Compression Z'] = cross_section_zscore(zones['ATR_Compression'])
+    zones['Swing Density Z'] = cross_section_zscore(zones['Swing_Density'])
+    zones['Time at Price Z'] = cross_section_zscore(zones['Time_at_Price'])
+    zones['VWAP Proximity Z'] = cross_section_zscore(-zones['VWAP_Distance'])
+    zones['Raw Liquidity Score'] = (
+        0.25 * zones['Volume Z-Score']
+        + 0.20 * zones['Flow Strength Z']
+        + 0.15 * zones['ATR Compression Z']
+        + 0.15 * zones['Swing Density Z']
+        + 0.15 * zones['Time at Price Z']
+        + 0.10 * zones['VWAP Proximity Z']
+    )
+    score_min = zones['Raw Liquidity Score'].min()
+    score_range = zones['Raw Liquidity Score'].max() - score_min
+    zones['Liquidity Score'] = (
+        100 * (zones['Raw Liquidity Score'] - score_min) / score_range
+        if score_range > 0 else 50.0
+    )
+    latest_price = float(data['close'].iloc[-1])
+    zones['Location vs Price'] = np.where(
+        zones['Zone Top'] < latest_price,
+        'Below price',
+        np.where(zones['Zone Bottom'] > latest_price, 'Above price', 'At price'),
+    )
+    zones['Flow Bias'] = np.where(
+        zones['Order Flow Imbalance'] > 0.05,
+        'Buying',
+        np.where(zones['Order Flow Imbalance'] < -0.05, 'Selling', 'Balanced'),
+    )
+    zones = zones.sort_values('Liquidity Score', ascending=False).head(int(top_zones))
+    return zones.reset_index(drop=True), data
+
+
 def plot_volatility_surface(df, symbol):
     """
     Computes and plots the "quantum" volatility surface and classical distribution.
@@ -3284,6 +3399,173 @@ def main():
             st.info(
                 "The asset, timeframe, or observation window changed. "
                 "Run the analysis again to refresh the Zone Battle results."
+            )
+
+        # --- Liquidity Zones ---
+        st.divider()
+        st.subheader("Liquidity Zones")
+        st.caption(
+            "Ranks price bands by volume, absolute order-flow imbalance, ATR "
+            "compression, swing density, time at price, and proximity to VWAP. "
+            "The combined Liquidity Score is normalized from 0 to 100."
+        )
+
+        liquidity_col1, liquidity_col2, liquidity_col3 = st.columns(3)
+        with liquidity_col1:
+            liquidity_asset = st.selectbox(
+                "Liquidity Zone asset",
+                options=[
+                    'SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB',
+                    '^FTSE', 'XAUUSD', 'GBPUSD=X',
+                ],
+                index=0,
+                key='liquidity_zone_asset',
+            )
+        with liquidity_col2:
+            liquidity_timeframe = st.selectbox(
+                "Liquidity Zone timeframe",
+                options=['5m', '15m', '1h', '4h', '1d'],
+                index=2,
+                key='liquidity_zone_timeframe',
+            )
+        with liquidity_col3:
+            liquidity_price_bins = st.number_input(
+                "Number of price bands",
+                min_value=10,
+                max_value=60,
+                value=24,
+                step=2,
+                key='liquidity_zone_price_bins',
+            )
+
+        liquidity_config = (
+            liquidity_asset, liquidity_timeframe, int(liquidity_price_bins)
+        )
+        if st.button(
+            f"Find Liquidity Zones for {liquidity_asset}",
+            key='run_liquidity_zone_analysis',
+        ):
+            with st.spinner(
+                f"Mapping {liquidity_asset} liquidity on {liquidity_timeframe} candles..."
+            ):
+                liquidity_source_df = fetch_and_analyze(
+                    liquidity_asset,
+                    timeframe=liquidity_timeframe,
+                    silent=True,
+                    limit=750,
+                )
+                liquidity_zones, liquidity_history = calculate_liquidity_zones(
+                    liquidity_source_df,
+                    price_bins=int(liquidity_price_bins),
+                    top_zones=8,
+                )
+            st.session_state['liquidity_zone_results'] = liquidity_zones
+            st.session_state['liquidity_zone_history'] = liquidity_history
+            st.session_state['liquidity_zone_config'] = liquidity_config
+
+        saved_liquidity_config = st.session_state.get('liquidity_zone_config')
+        if saved_liquidity_config == liquidity_config:
+            liquidity_zones = st.session_state.get(
+                'liquidity_zone_results', pd.DataFrame()
+            )
+            liquidity_history = st.session_state.get(
+                'liquidity_zone_history', pd.DataFrame()
+            )
+            if not liquidity_zones.empty and not liquidity_history.empty:
+                strongest_zone = liquidity_zones.iloc[0]
+                latest_liquidity_price = float(liquidity_history['close'].iloc[-1])
+                liquidity_metric1, liquidity_metric2, liquidity_metric3, liquidity_metric4 = st.columns(4)
+                liquidity_metric1.metric(
+                    "Strongest Zone",
+                    f"{strongest_zone['Zone Bottom']:.2f} - {strongest_zone['Zone Top']:.2f}",
+                )
+                liquidity_metric2.metric(
+                    "Liquidity Score", f"{strongest_zone['Liquidity Score']:.1f}/100"
+                )
+                liquidity_metric3.metric("Flow Bias", strongest_zone['Flow Bias'])
+                liquidity_metric4.metric("Last Price", f"{latest_liquidity_price:.2f}")
+
+                liquidity_fig = go.Figure()
+                liquidity_fig.add_trace(go.Bar(
+                    x=liquidity_zones['Liquidity Score'],
+                    y=liquidity_zones['Zone Midpoint'],
+                    orientation='h',
+                    width=(
+                        liquidity_zones['Zone Top'] - liquidity_zones['Zone Bottom']
+                    ) * 0.82,
+                    marker=dict(
+                        color=liquidity_zones['Order Flow Imbalance'],
+                        colorscale=[[0, '#ef4444'], [0.5, '#64748b'], [1, '#22c55e']],
+                        cmin=-1,
+                        cmax=1,
+                        colorbar=dict(title='Flow'),
+                    ),
+                    customdata=np.column_stack((
+                        liquidity_zones['Zone Bottom'],
+                        liquidity_zones['Zone Top'],
+                        liquidity_zones['Flow Bias'],
+                    )),
+                    hovertemplate=(
+                        'Zone: %{customdata[0]:.2f} - %{customdata[1]:.2f}<br>'
+                        'Score: %{x:.1f}<br>Flow: %{customdata[2]}<extra></extra>'
+                    ),
+                    name='Liquidity Score',
+                ))
+                liquidity_fig.add_hline(
+                    y=latest_liquidity_price,
+                    line_dash='dash',
+                    line_color='#f8fafc',
+                    annotation_text='Last Price',
+                )
+                liquidity_fig.update_layout(
+                    title=f'{liquidity_asset} Top Liquidity Zones ({liquidity_timeframe})',
+                    xaxis_title='Liquidity Score (0-100)',
+                    yaxis_title='Price',
+                    template='plotly_dark',
+                    xaxis=dict(range=[0, 105]),
+                )
+                st.plotly_chart(liquidity_fig, width='stretch')
+
+                liquidity_display_columns = [
+                    'Zone Bottom', 'Zone Top', 'Liquidity Score',
+                    'Location vs Price', 'Flow Bias', 'Order Flow Imbalance',
+                    'Volume Z-Score', 'ATR Compression Z', 'Swing Density Z',
+                    'Time at Price Z', 'VWAP Proximity Z',
+                ]
+                liquidity_styler = liquidity_zones[liquidity_display_columns].style.format({
+                    'Zone Bottom': '{:.2f}',
+                    'Zone Top': '{:.2f}',
+                    'Liquidity Score': '{:.1f}',
+                    'Order Flow Imbalance': '{:+.2%}',
+                    'Volume Z-Score': '{:+.2f}',
+                    'ATR Compression Z': '{:+.2f}',
+                    'Swing Density Z': '{:+.2f}',
+                    'Time at Price Z': '{:+.2f}',
+                    'VWAP Proximity Z': '{:+.2f}',
+                }).background_gradient(
+                    subset=['Liquidity Score'], cmap='viridis'
+                )
+                st.dataframe(liquidity_styler, width='stretch', hide_index=True)
+
+                with st.expander("How the Liquidity Score is calculated"):
+                    st.markdown(
+                        """
+- **25% Volume Z-Score:** unusually concentrated traded volume in the price band.
+- **20% Flow Strength:** absolute buy/sell volume imbalance; the sign is retained as Flow Bias.
+- **15% ATR Compression:** preference for bands formed during volatility contraction.
+- **15% Swing Density:** clustered local highs and lows, where stops may accumulate.
+- **15% Time at Price:** number of candles accepted within the band.
+- **10% VWAP Proximity:** preference for liquidity near volume-weighted fair value.
+
+Each component is standardized across the displayed price bands before the weighted score is normalized to **0-100**. A high score identifies a potential liquidity pool, not a guaranteed reversal or breakout.
+                        """
+                    )
+            else:
+                st.info("Not enough price and volume history was available to map liquidity zones.")
+        elif saved_liquidity_config is not None:
+            st.info(
+                "The Liquidity Zone asset, timeframe, or band count changed. "
+                "Run the analysis again to refresh the results."
             )
 
         # --- Volume Delta for US Indices and Macro Assets ---
