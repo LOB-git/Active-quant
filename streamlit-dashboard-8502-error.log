@@ -1,0 +1,31 @@
+2026-08-11 11:26:05.752 Uvicorn server started on 0.0.0.0:8502
+2026-08-11 11:42:23.974 The widget with key "selected_ghana_alert_date" was created with a default value but also had its value set via the Session State API.
+Stack (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1044, in _bootstrap
+    self._bootstrap_inner()
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1082, in _bootstrap_inner
+    self._context.run(self.run)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1024, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 419, in _run_script_thread
+    self._run_script(request.rerun_data)
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 814, in _run_script
+    ) = exec_func_with_error_handling(code_to_exec, ctx)
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\runtime\scriptrunner\exec_code.py", line 129, in exec_func_with_error_handling
+    result = func()
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 789, in code_to_exec
+    exec(code, module.__dict__)  # noqa: S102
+  File "C:\Users\Frank\quant pro wth pre market\Untitled-1.py", line 5012, in <module>
+    main()
+  File "C:\Users\Frank\quant pro wth pre market\Untitled-1.py", line 3077, in main
+    selected_ghana_alert_date = st.selectbox(
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\runtime\metrics_util.py", line 698, in wrapped_func
+    result = non_optional_func(*args, **kwargs)
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\elements\widgets\selectbox.py", line 553, in selectbox
+    return self._selectbox(
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\elements\widgets\selectbox.py", line 596, in _selectbox
+    check_widget_policies(
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\elements\lib\policies.py", line 187, in check_widget_policies
+    check_session_state_rules(
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\elements\lib\policies.py", line 92, in check_session_state_rules
+    _LOGGER.warning(

@@ -4,6 +4,7 @@ import requests
 import pandas as pd
 import yfinance as yf
 import numpy as np
+import os
 import time
 import concurrent.futures
 from datetime import datetime, timedelta
@@ -13,6 +14,12 @@ import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 import plotly.graph_objects as go
 import streamlit.components.v1 as components
+
+# Keep yfinance's SQLite caches in the writable project directory. This avoids
+# "unable to open database file" failures when the dashboard runs sandboxed.
+YFINANCE_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.yfinance-cache')
+os.makedirs(YFINANCE_CACHE_DIR, exist_ok=True)
+yf.set_tz_cache_location(YFINANCE_CACHE_DIR)
 
 polygon_available = True
 try:
@@ -604,7 +611,7 @@ def send_telegram_alert(token, chat_id, symbol, signal, price, score, reasons):
     if not token or not chat_id:
         return
 
-    emoji = "🟢" if "BUY" in signal else "🔴"
+    emoji = "🟢" if ("BUY" in signal or "POSITIVE" in signal) else "🔴"
     msg = (
         f"{emoji} *TRADE ALERT: {symbol}*\n"
         f"*Signal:* {signal}\n"
@@ -1973,6 +1980,54 @@ def calculate_liquidity_zones(df, price_bins=24, top_zones=8):
     return zones.reset_index(drop=True), data
 
 
+def build_daily_zscore_alert_history(df, z_score_series, symbol, timeframe, threshold=1.0):
+    """Build the first positive and negative Z-score alert per Ghana calendar day."""
+    if df is None or df.empty:
+        return []
+
+    scores = pd.to_numeric(z_score_series, errors='coerce')
+    prices = pd.to_numeric(df['close'], errors='coerce')
+    history = pd.DataFrame({'Z-Score': scores, 'Price': prices}).dropna()
+    if history.empty:
+        return []
+
+    timestamps = pd.DatetimeIndex(history.index)
+    if timestamps.tz is None:
+        timestamps = timestamps.tz_localize('UTC')
+    ghana_times = timestamps.tz_convert('Africa/Accra')
+    history['Ghana Time'] = ghana_times
+    history['Ghana Date'] = ghana_times.date
+    history['Alert'] = np.where(
+        history['Z-Score'] >= float(threshold),
+        'POSITIVE Z-SCORE',
+        np.where(
+            history['Z-Score'] <= -float(threshold),
+            'NEGATIVE Z-SCORE',
+            None,
+        ),
+    )
+    qualifying = history.dropna(subset=['Alert']).copy()
+    if qualifying.empty:
+        return []
+
+    # Keep the first threshold event of each direction for every Ghana day.
+    qualifying = qualifying.sort_values('Ghana Time').drop_duplicates(
+        subset=['Ghana Date', 'Alert'], keep='first'
+    )
+    rows = []
+    for _, event in qualifying.iterrows():
+        rows.append({
+            'Ghana Date': event['Ghana Date'],
+            'Ghana Time': event['Ghana Time'],
+            'Symbol': symbol,
+            'Alert': event['Alert'],
+            'Price': float(event['Price']),
+            'Z-Score': float(event['Z-Score']),
+            'Timeframe': timeframe,
+        })
+    return rows
+
+
 def plot_volatility_surface(df, symbol):
     """
     Computes and plots the "quantum" volatility surface and classical distribution.
@@ -2716,15 +2771,51 @@ def main():
         st.write("Tracking S&P 500 (SPY), Nasdaq 100 (QQQ), Dow Jones (DIA), Volatility Index (^VIX), and US Dollar Index (DX-Y.NYB).")
         # Timeframe selector for indices/stocks (15m, 1h, 4h)
         timeframe = st.selectbox("Select timeframe", ["15m", "1h", "4h"], index=1)
+
+        with st.expander("US Indices Alert Settings"):
+            index_alert_col1, index_alert_col2 = st.columns(2)
+            with index_alert_col1:
+                index_alert_enabled = st.checkbox(
+                    "Enable overview alerts",
+                    value=False,
+                    key='index_overview_alert_enabled',
+                )
+            with index_alert_col2:
+                index_alert_z_threshold = st.number_input(
+                    "Absolute Z-Score alert level",
+                    min_value=0.1,
+                    max_value=5.0,
+                    value=1.0,
+                    step=0.1,
+                    key='index_overview_alert_z_threshold',
+                )
+            index_alert_telegram = st.checkbox(
+                "Send qualifying alerts to Telegram",
+                value=True,
+                key='index_overview_alert_telegram',
+                help="Uses the Telegram Bot Token and Chat ID entered in the sidebar.",
+            )
+            st.caption(
+                "Triggers when the table Z-Score is greater than or equal to the positive "
+                "level, or less than or equal to the negative level. Alerts are checked "
+                "when indices data is refreshed."
+            )
         
         if 'index_stats' not in st.session_state:
             st.session_state.index_stats = []
+        if 'index_zscore_alerts' not in st.session_state:
+            st.session_state.index_zscore_alerts = []
+        if 'index_zscore_alert_keys' not in st.session_state:
+            st.session_state.index_zscore_alert_keys = set()
+        if 'daily_ghana_zscore_alerts' not in st.session_state:
+            st.session_state.daily_ghana_zscore_alerts = []
         
         if st.button("Refresh Indices Data"):
             with st.spinner("Fetching US Indices Data..."):
                 indices = ['SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB'] # Main indices for this table
                 index_stats = []
                 missing_indices = []
+                daily_ghana_alerts = []
                 for sym in indices:
                     df_idx = fetch_and_analyze(sym, timeframe=timeframe, silent=True)
                     if df_idx is not None and not df_idx.empty:
@@ -2737,6 +2828,15 @@ def main():
                         # Calculate each metric for every candle. Changes are measured
                         # from the previous candle to the current selected-timeframe candle.
                         z_score_series = pd.to_numeric(df_idx['z_score'], errors='coerce').fillna(0.0)
+                        daily_ghana_alerts.extend(
+                            build_daily_zscore_alert_history(
+                                df_idx,
+                                z_score_series,
+                                sym,
+                                timeframe,
+                                threshold=float(index_alert_z_threshold),
+                            )
+                        )
                         volume_ratio_series = (
                             pd.to_numeric(df_idx['volume'], errors='coerce')
                             / pd.to_numeric(df_idx['vol_ma'], errors='coerce').replace(0, np.nan)
@@ -2767,6 +2867,7 @@ def main():
                         
                         index_stats.append({
                             "Symbol": sym,
+                            "Candle Time": pd.Timestamp(df_idx.index[-1]),
                             "Price": current['close'],
                             "Momentum": momentum,
                             "Momentum Change": momentum_change,
@@ -2789,6 +2890,63 @@ def main():
                 # Save the results to session state
                 st.session_state.index_stats = index_stats
                 st.session_state.index_stats_timeframe = timeframe
+                st.session_state.daily_ghana_zscore_alerts = sorted(
+                    daily_ghana_alerts,
+                    key=lambda alert: alert['Ghana Time'],
+                    reverse=True,
+                )
+
+                if index_alert_enabled and index_stats:
+                    new_index_alerts = []
+                    for row in index_stats:
+                        z_score = float(row['Z-Score'])
+                        z_threshold = float(index_alert_z_threshold)
+                        if abs(z_score) < z_threshold:
+                            continue
+                        alert_side = 'POSITIVE Z-SCORE' if z_score >= z_threshold else 'NEGATIVE Z-SCORE'
+                        candle_time = pd.Timestamp(row['Candle Time'])
+                        alert_key = (
+                            row['Symbol'], timeframe, candle_time.isoformat(), alert_side
+                        )
+                        if alert_key in st.session_state.index_zscore_alert_keys:
+                            continue
+                        alert_row = {
+                            'Candle Time': candle_time,
+                            'Symbol': row['Symbol'],
+                            'Alert': alert_side,
+                            'Price': float(row['Price']),
+                            'Z-Score': z_score,
+                            'Z-Score Change': float(row['Z-Score Change']),
+                            'Timeframe': timeframe,
+                        }
+                        new_index_alerts.append(alert_row)
+                        st.session_state.index_zscore_alert_keys.add(alert_key)
+
+                        if index_alert_telegram and tg_token and tg_chat_id:
+                            send_telegram_alert(
+                                tg_token,
+                                tg_chat_id,
+                                row['Symbol'],
+                                alert_side,
+                                float(row['Price']),
+                                f"Z-Score {z_score:+.2f}",
+                                [
+                                    f"Threshold: +/-{z_threshold:.2f}",
+                                    f"Z-Score Change: {float(row['Z-Score Change']):+.2f}",
+                                    f"Timeframe: {timeframe}",
+                                ],
+                            )
+
+                    if new_index_alerts:
+                        st.session_state.index_zscore_alerts = (
+                            new_index_alerts + st.session_state.index_zscore_alerts
+                        )[:100]
+                        st.toast(
+                            f"{len(new_index_alerts)} new US indices alert(s) triggered.",
+                            icon="🚨",
+                        )
+                    else:
+                        st.info("No US indices met the selected alert thresholds.")
 
         # Display the table if data exists in session state
         if st.session_state.index_stats:
@@ -2881,6 +3039,71 @@ def main():
             )
                  
             st.dataframe(styler, width='stretch')
+
+            if st.session_state.index_zscore_alerts:
+                st.subheader("Recent US Indices Alerts")
+                index_alerts_df = pd.DataFrame(
+                    st.session_state.index_zscore_alerts
+                )
+                index_alerts_styler = index_alerts_df.style.format({
+                    'Price': '${:.2f}',
+                    'Z-Score': '{:+.2f}',
+                    'Z-Score Change': '{:+.2f}',
+                }).map(color_metrics, subset=['Z-Score', 'Z-Score Change'])
+                st.dataframe(
+                    index_alerts_styler,
+                    width='stretch',
+                    hide_index=True,
+                )
+
+            st.subheader("Daily Historical Z-Score Alerts — Ghana Time")
+            st.caption(
+                "For each Ghana calendar day, this table shows the first time each symbol "
+                "reached the positive threshold and the first time it reached the negative "
+                "threshold. Ghana uses GMT (Africa/Accra) year-round."
+            )
+            if st.session_state.daily_ghana_zscore_alerts:
+                daily_ghana_alerts_df = pd.DataFrame(
+                    st.session_state.daily_ghana_zscore_alerts
+                )
+                daily_ghana_alerts_df['Ghana Date'] = pd.to_datetime(
+                    daily_ghana_alerts_df['Ghana Date']
+                ).dt.date
+                available_ghana_dates = sorted(
+                    daily_ghana_alerts_df['Ghana Date'].dropna().unique()
+                )
+                if st.session_state.get('selected_ghana_alert_date') not in available_ghana_dates:
+                    st.session_state.selected_ghana_alert_date = available_ghana_dates[-1]
+                selected_ghana_alert_date = st.selectbox(
+                    "Select Ghana alert date",
+                    options=available_ghana_dates,
+                    index=len(available_ghana_dates) - 1,
+                    format_func=lambda selected_date: selected_date.strftime('%A, %B %d, %Y'),
+                    key='selected_ghana_alert_date',
+                )
+                daily_ghana_alerts_df = daily_ghana_alerts_df.loc[
+                    daily_ghana_alerts_df['Ghana Date'] == selected_ghana_alert_date
+                ].copy()
+                daily_ghana_alerts_df['Ghana Date'] = daily_ghana_alerts_df[
+                    'Ghana Date'
+                ].map(lambda alert_date: alert_date.strftime('%Y-%m-%d'))
+                daily_ghana_alerts_df['Ghana Time'] = pd.to_datetime(
+                    daily_ghana_alerts_df['Ghana Time'], utc=True
+                ).dt.tz_convert('Africa/Accra').dt.strftime('%Y-%m-%d %H:%M')
+                daily_ghana_styler = daily_ghana_alerts_df.style.format({
+                    'Price': '${:.2f}',
+                    'Z-Score': '{:+.2f}',
+                }).map(color_metrics, subset=['Z-Score'])
+                st.dataframe(
+                    daily_ghana_styler,
+                    width='stretch',
+                    hide_index=True,
+                )
+            else:
+                st.info(
+                    "No historical candles reached the selected positive or negative "
+                    "Z-Score threshold. Refresh the indices data to rebuild this history."
+                )
 
             # --- GEX Analysis for Major Indices / Macro Assets ---
             st.divider()
