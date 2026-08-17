@@ -154,7 +154,7 @@ def fetch_and_analyze(symbol='BTC/USDT', timeframe='1h', start_date=None, end_da
         }
         symbol = symbol_aliases.get(raw_symbol.upper(), raw_symbol)
 
-        stock_index_symbols = ['SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB', 'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'LLY', 'JPM', 'GBPUSD=X', '^FTSE', 'XAUUSD', 'XAUUSD=X', 'GC=F', 'GLD']
+        stock_index_symbols = ['SPY', 'QQQ', 'DIA', 'NQ=F', '^VIX', 'DX-Y.NYB', 'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'LLY', 'JPM', 'GBPUSD=X', '^FTSE', 'XAUUSD', 'XAUUSD=X', 'GC=F', 'GLD']
         is_stock_index = symbol in stock_index_symbols or raw_symbol in stock_index_symbols or raw_symbol.upper() in stock_index_symbols
 
         # Handle Symbol Formatting (e.g., BTC-USD -> BTC/USDT for Binance)
@@ -1980,14 +1980,26 @@ def calculate_liquidity_zones(df, price_bins=24, top_zones=8):
     return zones.reset_index(drop=True), data
 
 
-def build_daily_zscore_alert_history(df, z_score_series, symbol, timeframe, threshold=1.0):
-    """Build the first positive and negative Z-score alert per Ghana calendar day."""
+def build_daily_zscore_alert_history(
+    df,
+    z_score_series,
+    symbol,
+    timeframe,
+    threshold=1.0,
+    momentum_z_series=None,
+):
+    """Build first daily Z alerts, optionally requiring aligned Momentum Z confirmation."""
     if df is None or df.empty:
         return []
 
     scores = pd.to_numeric(z_score_series, errors='coerce')
     prices = pd.to_numeric(df['close'], errors='coerce')
     history = pd.DataFrame({'Z-Score': scores, 'Price': prices}).dropna()
+    if momentum_z_series is not None:
+        history['Momentum Z'] = pd.to_numeric(
+            momentum_z_series, errors='coerce'
+        )
+        history = history.dropna(subset=['Momentum Z'])
     if history.empty:
         return []
 
@@ -1997,14 +2009,15 @@ def build_daily_zscore_alert_history(df, z_score_series, symbol, timeframe, thre
     ghana_times = timestamps.tz_convert('Africa/Accra')
     history['Ghana Time'] = ghana_times
     history['Ghana Date'] = ghana_times.date
+    positive_condition = history['Z-Score'] >= float(threshold)
+    negative_condition = history['Z-Score'] <= -float(threshold)
+    if momentum_z_series is not None:
+        positive_condition &= history['Momentum Z'] >= float(threshold)
+        negative_condition &= history['Momentum Z'] <= -float(threshold)
     history['Alert'] = np.where(
-        history['Z-Score'] >= float(threshold),
+        positive_condition,
         'POSITIVE Z-SCORE',
-        np.where(
-            history['Z-Score'] <= -float(threshold),
-            'NEGATIVE Z-SCORE',
-            None,
-        ),
+        np.where(negative_condition, 'NEGATIVE Z-SCORE', None),
     )
     qualifying = history.dropna(subset=['Alert']).copy()
     if qualifying.empty:
@@ -2016,7 +2029,7 @@ def build_daily_zscore_alert_history(df, z_score_series, symbol, timeframe, thre
     )
     rows = []
     for _, event in qualifying.iterrows():
-        rows.append({
+        row = {
             'Ghana Date': event['Ghana Date'],
             'Ghana Time': event['Ghana Time'],
             'Symbol': symbol,
@@ -2024,8 +2037,338 @@ def build_daily_zscore_alert_history(df, z_score_series, symbol, timeframe, thre
             'Price': float(event['Price']),
             'Z-Score': float(event['Z-Score']),
             'Timeframe': timeframe,
-        })
+        }
+        if momentum_z_series is not None:
+            row['Momentum Z'] = float(event['Momentum Z'])
+        rows.append(row)
     return rows
+
+
+def backtest_nas100_from_vix_daily_alerts(
+    nas100_df,
+    vix_df,
+    nas100_alert_df=None,
+    alert_timeframe='1h',
+    nas100_alert_timeframe='1h',
+    entry_timeframe='5m',
+    z_threshold=1.0,
+    atr_risk=1.0,
+    start_date=None,
+    end_date=None,
+    strategy_logic='logic_1',
+    stored_daily_alerts=None,
+):
+    """Trade NQ futures in the opposite direction of daily VIX Z-score alerts."""
+    using_stored_alerts = stored_daily_alerts is not None and len(stored_daily_alerts) > 0
+    if nas100_df is None or nas100_df.empty:
+        return {}, pd.DataFrame(), pd.DataFrame()
+    if not using_stored_alerts and (vix_df is None or vix_df.empty):
+        return {}, pd.DataFrame(), pd.DataFrame()
+
+    nas = nas100_df.copy().sort_index()
+    vix = vix_df.copy().sort_index() if vix_df is not None else pd.DataFrame()
+    nas_alert_source = (
+        nas100_alert_df.copy().sort_index()
+        if nas100_alert_df is not None and not nas100_alert_df.empty
+        else nas.copy()
+    )
+    timeframe_durations = {
+        '5m': pd.Timedelta(minutes=5),
+        '15m': pd.Timedelta(minutes=15),
+        '1h': pd.Timedelta(hours=1),
+        '4h': pd.Timedelta(hours=4),
+    }
+    alert_duration = timeframe_durations.get(
+        alert_timeframe, pd.Timedelta(hours=1)
+    )
+    nas_alert_duration = timeframe_durations.get(
+        nas100_alert_timeframe, pd.Timedelta(hours=1)
+    )
+    entry_duration = timeframe_durations.get(
+        entry_timeframe, pd.Timedelta(minutes=5)
+    )
+    previous_close = nas['close'].shift(1)
+    true_range = pd.concat([
+        nas['high'] - nas['low'],
+        (nas['high'] - previous_close).abs(),
+        (nas['low'] - previous_close).abs(),
+    ], axis=1).max(axis=1)
+    nas['ATR14'] = true_range.rolling(14).mean()
+
+    if using_stored_alerts:
+        stored_alerts_df = pd.DataFrame(stored_daily_alerts).copy()
+        stored_alerts_df['Ghana Time'] = pd.to_datetime(
+            stored_alerts_df['Ghana Time'], utc=True
+        )
+        signals = stored_alerts_df.loc[
+            (stored_alerts_df['Symbol'] == '^VIX')
+            & (stored_alerts_df['Timeframe'] == alert_timeframe)
+        ].sort_values('Ghana Time')
+    else:
+        vix_scores = pd.to_numeric(vix['z_score'], errors='coerce')
+        vix_momentum = pd.to_numeric(vix['momentum'], errors='coerce')
+        momentum_mean = vix_momentum.rolling(50).mean()
+        momentum_std = vix_momentum.rolling(50).std().replace(0, np.nan)
+        vix_momentum_z = (vix_momentum - momentum_mean) / momentum_std
+        vix_at_close = vix.copy()
+        vix_at_close.index = pd.DatetimeIndex(vix_at_close.index) + alert_duration
+        vix_scores.index = vix_at_close.index
+        vix_momentum_z.index = vix_at_close.index
+        alert_rows = build_daily_zscore_alert_history(
+            vix_at_close,
+            vix_scores,
+            '^VIX',
+            alert_timeframe,
+            threshold=float(z_threshold),
+            momentum_z_series=vix_momentum_z,
+        )
+        if not alert_rows:
+            return {}, pd.DataFrame(), pd.DataFrame()
+        signals = pd.DataFrame(alert_rows).sort_values('Ghana Time')
+    if start_date is not None:
+        signals = signals.loc[
+            pd.to_datetime(signals['Ghana Date']).dt.date >= start_date
+        ]
+    if end_date is not None:
+        signals = signals.loc[
+            pd.to_datetime(signals['Ghana Date']).dt.date <= end_date
+        ]
+    if signals.empty:
+        return {}, pd.DataFrame(), signals
+
+    signals = signals.copy()
+    signals['Execution Time'] = signals['Ghana Time']
+    if strategy_logic == 'logic_2':
+        if using_stored_alerts:
+            nas_alerts = stored_alerts_df.loc[
+                (stored_alerts_df['Symbol'] == 'NQ=F')
+                & (stored_alerts_df['Timeframe'] == nas100_alert_timeframe)
+            ].copy()
+            nas_alerts = nas_alerts.rename(columns={
+                'Ghana Time': 'NAS100 Alert Time',
+                'Alert': 'NAS100 Alert',
+                'Z-Score': 'NAS100 Z-Score',
+                'Momentum Z': 'NAS100 Momentum Z',
+            }).sort_values('NAS100 Alert Time')
+        else:
+            nas_z = pd.to_numeric(nas_alert_source['z_score'], errors='coerce')
+            nas_momentum = pd.to_numeric(
+                nas_alert_source['momentum'], errors='coerce'
+            )
+            nas_momentum_z = (
+                (nas_momentum - nas_momentum.rolling(50).mean())
+                / nas_momentum.rolling(50).std().replace(0, np.nan)
+            )
+            positive_aligned = (
+                (nas_z >= float(z_threshold))
+                & (nas_momentum_z >= float(z_threshold))
+            )
+            negative_aligned = (
+                (nas_z <= -float(z_threshold))
+                & (nas_momentum_z <= -float(z_threshold))
+            )
+            positive_trigger = positive_aligned & ~positive_aligned.shift(1).fillna(False)
+            negative_trigger = negative_aligned & ~negative_aligned.shift(1).fillna(False)
+            trigger_mask = positive_trigger | negative_trigger
+
+            nas_alert_times = pd.DatetimeIndex(nas_alert_source.index)
+            if nas_alert_times.tz is None:
+                nas_alert_times = nas_alert_times.tz_localize('UTC')
+            else:
+                nas_alert_times = nas_alert_times.tz_convert('UTC')
+            nas_alert_times = nas_alert_times + nas_alert_duration
+            nas_alerts = pd.DataFrame({
+                'NAS100 Alert Time': nas_alert_times[trigger_mask.to_numpy()],
+                'NAS100 Alert': np.where(
+                    positive_trigger[trigger_mask],
+                    'POSITIVE Z-SCORE',
+                    'NEGATIVE Z-SCORE',
+                ),
+                'NAS100 Z-Score': nas_z[trigger_mask].to_numpy(),
+                'NAS100 Momentum Z': nas_momentum_z[trigger_mask].to_numpy(),
+            }).sort_values('NAS100 Alert Time')
+
+        confirmed_rows = []
+        ordered_vix = signals.sort_values('Ghana Time').reset_index(drop=True)
+        for signal_position, vix_signal in ordered_vix.iterrows():
+            vix_time = pd.Timestamp(vix_signal['Ghana Time'])
+            next_vix_time = (
+                pd.Timestamp(ordered_vix.iloc[signal_position + 1]['Ghana Time'])
+                if signal_position + 1 < len(ordered_vix)
+                else None
+            )
+            candidates = nas_alerts.loc[
+                (nas_alerts['NAS100 Alert Time'] > vix_time)
+                & (nas_alerts['NAS100 Alert'] == vix_signal['Alert'])
+            ]
+            if next_vix_time is not None:
+                candidates = candidates.loc[
+                    candidates['NAS100 Alert Time'] < next_vix_time
+                ]
+            if candidates.empty:
+                continue
+            confirmation = candidates.iloc[0]
+            confirmed = vix_signal.to_dict()
+            confirmed.update(confirmation.to_dict())
+            confirmed['Execution Time'] = confirmation['NAS100 Alert Time']
+            confirmed_rows.append(confirmed)
+
+        signals = pd.DataFrame(confirmed_rows)
+        if signals.empty:
+            return {}, pd.DataFrame(), signals
+
+    nas_index = pd.DatetimeIndex(nas.index)
+    signal_index = pd.DatetimeIndex(signals['Execution Time'])
+    if nas_index.tz is None:
+        nas_comparison_index = nas_index.tz_localize('UTC')
+    else:
+        nas_comparison_index = nas_index.tz_convert('UTC')
+    # Compare candle close times so the selected hourly NAS100 price is the
+    # close available exactly when the completed hourly VIX alert triggers.
+    nas_comparison_index = nas_comparison_index + entry_duration
+    signal_index = signal_index.tz_convert('UTC')
+
+    trades = []
+    next_available_position = 0
+    for signal_number, (_, signal) in enumerate(signals.iterrows()):
+        signal_time = signal_index[signal_number]
+        # The VIX alert is confirmed at its candle close. Enter using the NAS100
+        # close at that same timestamp (or the latest NAS100 close available at it).
+        entry_position = int(
+            nas_comparison_index.searchsorted(signal_time, side='right') - 1
+        )
+        # Ignore alerts that occur while an earlier trade is still open; do not
+        # defer a stale signal until that position closes.
+        if entry_position < 0 or entry_position < next_available_position:
+            continue
+        if entry_position >= len(nas):
+            continue
+
+        entry_bar = nas.iloc[entry_position]
+        entry_price = float(entry_bar['close'])
+        atr = float(entry_bar['ATR14'])
+        if not np.isfinite(entry_price) or not np.isfinite(atr) or atr <= 0:
+            continue
+
+        if strategy_logic == 'logic_2':
+            direction = 'LONG' if signal['Alert'] == 'POSITIVE Z-SCORE' else 'SHORT'
+        else:
+            direction = 'SHORT' if signal['Alert'] == 'POSITIVE Z-SCORE' else 'LONG'
+        risk_distance = atr * float(atr_risk)
+
+        # Build the 1-hour liquidity map only from candles that had closed by
+        # the entry time. This prevents future zones leaking into the backtest.
+        liquidity_index = pd.DatetimeIndex(nas_alert_source.index)
+        if liquidity_index.tz is None:
+            liquidity_close_index = liquidity_index.tz_localize('UTC')
+        else:
+            liquidity_close_index = liquidity_index.tz_convert('UTC')
+        liquidity_close_index = liquidity_close_index + nas_alert_duration
+        available_liquidity_positions = np.flatnonzero(
+            liquidity_close_index <= signal_time
+        )
+        if len(available_liquidity_positions) == 0:
+            continue
+        liquidity_history = nas_alert_source.iloc[
+            :int(available_liquidity_positions[-1]) + 1
+        ]
+        liquidity_zones, _ = calculate_liquidity_zones(
+            liquidity_history,
+            price_bins=24,
+            top_zones=24,
+        )
+        if liquidity_zones.empty:
+            continue
+
+        if direction == 'LONG':
+            stop_price = entry_price - risk_distance
+            target_candidates = liquidity_zones.loc[
+                liquidity_zones['Zone Bottom'] > entry_price
+            ].sort_values('Zone Bottom')
+            if target_candidates.empty:
+                continue
+            target_zone = target_candidates.iloc[0]
+            target_price = float(target_zone['Zone Bottom'])
+        else:
+            stop_price = entry_price + risk_distance
+            target_candidates = liquidity_zones.loc[
+                liquidity_zones['Zone Top'] < entry_price
+            ].sort_values('Zone Top', ascending=False)
+            if target_candidates.empty:
+                continue
+            target_zone = target_candidates.iloc[0]
+            target_price = float(target_zone['Zone Top'])
+        planned_reward_risk = abs(target_price - entry_price) / risk_distance
+
+        exit_position = len(nas) - 1
+        exit_price = float(nas['close'].iloc[-1])
+        exit_reason = 'End of Data'
+        # Entry occurs at the signal candle close, so only subsequent candles
+        # can touch the stop or target.
+        for position in range(entry_position + 1, len(nas)):
+            candle = nas.iloc[position]
+            if direction == 'LONG':
+                stop_hit = float(candle['low']) <= stop_price
+                target_hit = float(candle['high']) >= target_price
+            else:
+                stop_hit = float(candle['high']) >= stop_price
+                target_hit = float(candle['low']) <= target_price
+
+            # Conservative rule: count the stop first if both are hit in one candle.
+            if stop_hit or target_hit:
+                exit_position = position
+                exit_price = stop_price if stop_hit else target_price
+                exit_reason = 'Stop Loss' if stop_hit else 'Take Profit'
+                break
+
+        pnl_points = (
+            exit_price - entry_price
+            if direction == 'LONG'
+            else entry_price - exit_price
+        )
+        r_multiple = pnl_points / risk_distance
+        trades.append({
+            'Ghana Alert Date': signal['Ghana Date'],
+            'VIX Alert Time': signal['Ghana Time'],
+            'VIX Z-Score': float(signal['Z-Score']),
+            'VIX Momentum Z': float(signal['Momentum Z']),
+            'NAS100 Alert Time': signal.get('NAS100 Alert Time', pd.NaT),
+            'NAS100 Z-Score': float(signal.get('NAS100 Z-Score', np.nan)),
+            'NAS100 Momentum Z': float(signal.get('NAS100 Momentum Z', np.nan)),
+            'Direction': direction,
+            'Entry Time': nas_comparison_index[entry_position],
+            'Entry Price': entry_price,
+            'ATR14': atr,
+            'Stop Price': stop_price,
+            'Target Price': target_price,
+            'Target Zone Bottom': float(target_zone['Zone Bottom']),
+            'Target Zone Top': float(target_zone['Zone Top']),
+            'Target Liquidity Score': float(target_zone['Liquidity Score']),
+            'Planned Reward/Risk': planned_reward_risk,
+            'Exit Time': nas_comparison_index[exit_position],
+            'Exit Price': exit_price,
+            'Exit Reason': exit_reason,
+            'R Multiple': r_multiple,
+            'PnL Points': pnl_points,
+        })
+        next_available_position = exit_position + 1
+
+    trades_df = pd.DataFrame(trades)
+    if trades_df.empty:
+        return {}, trades_df, signals
+
+    winning_r = trades_df.loc[trades_df['R Multiple'] > 0, 'R Multiple'].sum()
+    losing_r = abs(trades_df.loc[trades_df['R Multiple'] < 0, 'R Multiple'].sum())
+    summary = {
+        'Trades': int(len(trades_df)),
+        'Win Rate %': float((trades_df['R Multiple'] > 0).mean() * 100),
+        'Net R': float(trades_df['R Multiple'].sum()),
+        'Average R': float(trades_df['R Multiple'].mean()),
+        'Profit Factor': float(winning_r / losing_r) if losing_r > 0 else np.inf,
+        'Net Points': float(trades_df['PnL Points'].sum()),
+    }
+    trades_df['Cumulative R'] = trades_df['R Multiple'].cumsum()
+    return summary, trades_df, signals
 
 
 def plot_volatility_surface(df, symbol):
@@ -2341,7 +2684,7 @@ def main():
     polygon_api_key = st.sidebar.text_input("Polygon.io API Key", type="password")
 
     # Tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "🔥 Derivatives Trend Scan",
         "🛠️ Backtest Engine",
         "🏛️ US Indices",
@@ -2349,6 +2692,7 @@ def main():
         "📈 Volatility Dashboard",
         "🆕 Derivative Crypto",
         "🧪 Index & Gold Z Backtest",
+        "📉 NAS100 VIX Alert Backtest",
     ])
 
     if False:  # Removed: Market Overview
@@ -2768,7 +3112,7 @@ def main():
 
     with tab3:
         st.subheader("🏛️ Top US Indices & VIX Overview")
-        st.write("Tracking S&P 500 (SPY), Nasdaq 100 (QQQ), Dow Jones (DIA), Volatility Index (^VIX), and US Dollar Index (DX-Y.NYB).")
+        st.write("Tracking S&P 500 (SPY), Nasdaq 100 (QQQ), NAS100 futures (NQ=F), Dow Jones (DIA), Volatility Index (^VIX), and US Dollar Index (DX-Y.NYB).")
         # Timeframe selector for indices/stocks (15m, 1h, 4h)
         timeframe = st.selectbox("Select timeframe", ["15m", "1h", "4h"], index=1)
 
@@ -2812,7 +3156,7 @@ def main():
         
         if st.button("Refresh Indices Data"):
             with st.spinner("Fetching US Indices Data..."):
-                indices = ['SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB'] # Main indices for this table
+                indices = ['SPY', 'QQQ', 'NQ=F', 'DIA', '^VIX', 'DX-Y.NYB'] # Main indices for this table
                 index_stats = []
                 missing_indices = []
                 daily_ghana_alerts = []
@@ -2828,13 +3172,34 @@ def main():
                         # Calculate each metric for every candle. Changes are measured
                         # from the previous candle to the current selected-timeframe candle.
                         z_score_series = pd.to_numeric(df_idx['z_score'], errors='coerce').fillna(0.0)
+                        historical_momentum = pd.to_numeric(
+                            df_idx['momentum'], errors='coerce'
+                        )
+                        historical_momentum_z = (
+                            (historical_momentum - historical_momentum.rolling(50).mean())
+                            / historical_momentum.rolling(50).std().replace(0, np.nan)
+                        )
+                        alert_bar_duration = {
+                            '15m': pd.Timedelta(minutes=15),
+                            '1h': pd.Timedelta(hours=1),
+                            '4h': pd.Timedelta(hours=4),
+                        }[timeframe]
+                        historical_alert_df = df_idx.copy()
+                        historical_alert_df.index = (
+                            pd.DatetimeIndex(historical_alert_df.index)
+                            + alert_bar_duration
+                        )
+                        alert_z_score_series = z_score_series.copy()
+                        alert_z_score_series.index = historical_alert_df.index
+                        historical_momentum_z.index = historical_alert_df.index
                         daily_ghana_alerts.extend(
                             build_daily_zscore_alert_history(
-                                df_idx,
-                                z_score_series,
+                                historical_alert_df,
+                                alert_z_score_series,
                                 sym,
                                 timeframe,
                                 threshold=float(index_alert_z_threshold),
+                                momentum_z_series=historical_momentum_z,
                             )
                         )
                         volume_ratio_series = (
@@ -2894,6 +3259,10 @@ def main():
                     daily_ghana_alerts,
                     key=lambda alert: alert['Ghana Time'],
                     reverse=True,
+                )
+                st.session_state.daily_ghana_zscore_alert_timeframe = timeframe
+                st.session_state.daily_ghana_zscore_alert_threshold = float(
+                    index_alert_z_threshold
                 )
 
                 if index_alert_enabled and index_stats:
@@ -3059,8 +3428,8 @@ def main():
             st.subheader("Daily Historical Z-Score Alerts — Ghana Time")
             st.caption(
                 "For each Ghana calendar day, this table shows the first time each symbol "
-                "reached the positive threshold and the first time it reached the negative "
-                "threshold. Ghana uses GMT (Africa/Accra) year-round."
+                "had aligned Z-Score and Momentum Z values at the positive threshold, and "
+                "the first aligned negative event. Ghana uses GMT (Africa/Accra) year-round."
             )
             if st.session_state.daily_ghana_zscore_alerts:
                 daily_ghana_alerts_df = pd.DataFrame(
@@ -3073,7 +3442,7 @@ def main():
                     daily_ghana_alerts_df['Ghana Date'].dropna().unique()
                 )
                 if st.session_state.get('selected_ghana_alert_date') not in available_ghana_dates:
-                    st.session_state.selected_ghana_alert_date = available_ghana_dates[-1]
+                    st.session_state.pop('selected_ghana_alert_date', None)
                 selected_ghana_alert_date = st.selectbox(
                     "Select Ghana alert date",
                     options=available_ghana_dates,
@@ -3093,7 +3462,8 @@ def main():
                 daily_ghana_styler = daily_ghana_alerts_df.style.format({
                     'Price': '${:.2f}',
                     'Z-Score': '{:+.2f}',
-                }).map(color_metrics, subset=['Z-Score'])
+                    'Momentum Z': '{:+.2f}',
+                }).map(color_metrics, subset=['Z-Score', 'Momentum Z'])
                 st.dataframe(
                     daily_ghana_styler,
                     width='stretch',
@@ -3257,12 +3627,12 @@ def main():
 
 
         st.divider()
-        st.subheader("💰 Daily ETF Inflow / Outflow (SPY, QQQ, DIA, BTC/USD)")
+        st.subheader("💰 Daily ETF Inflow / Outflow (SPY, QQQ, NQ=F, DIA, BTC/USD)")
         st.caption("This section shows intraday inflow and outflow for the major index ETFs and BTC/USD across 5m, 15m, 1h, and 4h candles so you can monitor real-time market momentum.")
 
         timeframes = [('5m', '5m'), ('15m', '15m'), ('1h', '1h'), ('4h', '4h')]
         daily_flow_rows = []
-        for symbol in ['SPY', 'QQQ', 'DIA', 'BTC/USD']:
+        for symbol in ['SPY', 'QQQ', 'NQ=F', 'DIA', 'BTC/USD']:
             row = {'Symbol': symbol}
             for label, interval in timeframes:
                 flow_summary = get_intraday_money_flow(symbol, interval=interval, period='1d')
@@ -3298,7 +3668,7 @@ def main():
         st.subheader("Macro Quant Strength (QS) Comparison")
         st.caption("This table compares major indices and currency pairs using a relative strength model. A higher score indicates stronger performance versus the group.")
 
-        indices_for_qs = ['SPY', 'QQQ', 'DIA', 'DX-Y.NYB', '^FTSE', 'GBPUSD=X', 'XAUUSD']
+        indices_for_qs = ['SPY', 'QQQ', 'NQ=F', 'DIA', 'DX-Y.NYB', '^FTSE', 'GBPUSD=X', 'XAUUSD']
         if st.button("Refresh Macro QS Comparison"):
             qs_indices_data = []
             with st.spinner("Fetching macro comparison data..."):
@@ -3362,7 +3732,14 @@ def main():
         st.subheader("Historical Z-Score Component Analysis")
         st.caption("This chart shows the historical Z-scores for each component of the QS score for a single asset. This helps identify which factors are strengthening or weakening over time. A value of +2 means the factor is 2 standard deviations above its own recent history.")
 
-        z_chart_symbols = ['BTC/USD'] + (df_qs_indices['symbol'].tolist() if not df_qs_indices.empty else indices_for_qs)
+        z_chart_base_symbols = (
+            df_qs_indices['symbol'].tolist()
+            if not df_qs_indices.empty
+            else indices_for_qs
+        )
+        z_chart_symbols = list(dict.fromkeys(
+            ['BTC/USD', 'NQ=F'] + z_chart_base_symbols
+        ))
         if z_chart_symbols:
             z_chart_asset = st.selectbox("Select Asset for Z-Score Chart", options=z_chart_symbols)
             z_chart_timeframe = st.selectbox("Select timeframe for historical components", options=['5m', '15m', '1h', '4h', '12h', '1d'], index=2, key='z_chart_timeframe')
@@ -4885,6 +5262,261 @@ Each component is standardized across the displayed price bands before the weigh
                 st.line_chart(signal_chart)
         else:
             st.caption("Select one asset and date range, then run its backtest.")
+
+    with tab8:
+        st.subheader("NAS100 Backtest from Daily VIX Z-Score Alerts")
+        st.write(
+            "Backtests NAS100 futures (Yahoo Finance ticker NQ=F) using confirmed VIX "
+            "and Momentum Z alerts. Select the entry logic below."
+        )
+        st.info(
+            "VIX and NAS100 alerts are calculated from completed 1-hour candles. "
+            "Entry uses the NAS100 5-minute candle close available at the exact alert time. "
+            "The stop is based on 5-minute NAS100 ATR(14). Take profit is the nearest "
+            "1-hour liquidity zone in the trade direction, calculated without future data. "
+            "Stop/target evaluation uses subsequent 5-minute candles. If both are touched "
+            "in one candle, the stop is counted first."
+        )
+
+        nas_vix_earliest = (datetime.now() - timedelta(days=59)).date()
+        nas_vix_latest = datetime.now().date()
+        nas_vix_default_start = (datetime.now() - timedelta(days=30)).date()
+        nas_vix_col1, nas_vix_col2, nas_vix_col3, nas_vix_col4, nas_vix_col5 = st.columns(5)
+        with nas_vix_col1:
+            st.metric("VIX alert timeframe", "1 hour")
+        with nas_vix_col2:
+            st.metric("NAS100 entry & exits", "5 minutes")
+        with nas_vix_col3:
+            nas_vix_start = st.date_input(
+                "Start date",
+                value=nas_vix_default_start,
+                min_value=nas_vix_earliest,
+                max_value=nas_vix_latest,
+                key='nas_vix_backtest_start',
+            )
+        with nas_vix_col4:
+            nas_vix_end = st.date_input(
+                "End date",
+                value=nas_vix_latest,
+                min_value=nas_vix_earliest,
+                max_value=nas_vix_latest,
+                key='nas_vix_backtest_end',
+            )
+        with nas_vix_col5:
+            nas_vix_atr_risk = st.number_input(
+                "Stop distance (ATR multiple)",
+                min_value=0.25,
+                max_value=5.0,
+                value=1.0,
+                step=0.25,
+                key='nas_vix_backtest_atr_risk',
+            )
+
+        nas_logic_col1, nas_logic_col2 = st.columns(2)
+        with nas_logic_col1:
+            nas_vix_logic = st.selectbox(
+                "Backtest logic",
+                options=['logic_1', 'logic_2'],
+                format_func=lambda logic: (
+                    "Logic 1 — Trade opposite the VIX alert"
+                    if logic == 'logic_1'
+                    else "Logic 2 — Wait for matching NAS100 alert"
+                ),
+                key='nas_vix_backtest_logic',
+            )
+        with nas_logic_col2:
+            nas_vix_threshold = float(st.session_state.get(
+                'daily_ghana_zscore_alert_threshold', 1.0
+            ))
+            st.metric("Stored alert threshold", f"±{nas_vix_threshold:.2f}")
+        if nas_vix_logic == 'logic_1':
+            st.caption(
+                "Logic 1: positive aligned VIX alert → SELL NAS100; "
+                "negative aligned VIX alert → BUY NAS100."
+            )
+        else:
+            st.caption(
+                "Logic 2: wait for the first VIX alert, then the first later NAS100 "
+                "alert with the same sign. Positive + positive → BUY; "
+                "negative + negative → SELL."
+            )
+
+        stored_backtest_alerts = st.session_state.get(
+            'daily_ghana_zscore_alerts', []
+        )
+        stored_alert_symbols = {
+            alert.get('Symbol') for alert in stored_backtest_alerts
+            if isinstance(alert, dict)
+        }
+        required_stored_symbols = {'^VIX'} | (
+            {'NQ=F'} if nas_vix_logic == 'logic_2' else set()
+        )
+        stored_alerts_ready = (
+            bool(stored_backtest_alerts)
+            and st.session_state.get('daily_ghana_zscore_alert_timeframe') == '1h'
+            and required_stored_symbols.issubset(stored_alert_symbols)
+            and all(
+                'Momentum Z' in alert
+                for alert in stored_backtest_alerts
+                if isinstance(alert, dict)
+            )
+        )
+
+        if st.button("Run NAS100 / VIX Alert Backtest", key='run_nas_vix_backtest'):
+            if nas_vix_start > nas_vix_end:
+                st.error("The start date must be on or before the end date.")
+            elif not stored_alerts_ready:
+                st.error(
+                    "First open the US Indices tab, select the 1h timeframe, and click "
+                    "Refresh Indices Data. The backtest requires that stored Ghana-time table."
+                )
+            else:
+                warmup_start = max(
+                    nas_vix_earliest,
+                    nas_vix_start - timedelta(days=14),
+                )
+                end_exclusive = nas_vix_end + timedelta(days=1)
+                with st.spinner("Loading the stored alert table and simulating NAS100 trades..."):
+                    nas100_backtest_df = fetch_and_analyze(
+                        'NQ=F',
+                        timeframe='5m',
+                        start_date=warmup_start.strftime('%Y-%m-%d'),
+                        end_date=end_exclusive.strftime('%Y-%m-%d'),
+                        silent=True,
+                    )
+                    nas100_liquidity_df = fetch_and_analyze(
+                        'NQ=F',
+                        timeframe='1h',
+                        start_date=warmup_start.strftime('%Y-%m-%d'),
+                        end_date=end_exclusive.strftime('%Y-%m-%d'),
+                        silent=True,
+                    )
+                    nas_vix_summary, nas_vix_trades, nas_vix_signals = (
+                        backtest_nas100_from_vix_daily_alerts(
+                            nas100_backtest_df,
+                            pd.DataFrame(),
+                            nas100_alert_df=nas100_liquidity_df,
+                            alert_timeframe='1h',
+                            nas100_alert_timeframe='1h',
+                            entry_timeframe='5m',
+                            z_threshold=float(nas_vix_threshold),
+                            atr_risk=float(nas_vix_atr_risk),
+                            start_date=nas_vix_start,
+                            end_date=nas_vix_end,
+                            strategy_logic=nas_vix_logic,
+                            stored_daily_alerts=stored_backtest_alerts,
+                        )
+                    )
+                st.session_state['nas_vix_backtest_summary'] = nas_vix_summary
+                st.session_state['nas_vix_backtest_trades'] = nas_vix_trades
+                st.session_state['nas_vix_backtest_signals'] = nas_vix_signals
+                st.session_state['nas_vix_backtest_config'] = (
+                    '1h',
+                    '1h',
+                    '5m',
+                    nas_vix_start,
+                    nas_vix_end,
+                    float(nas_vix_threshold),
+                    float(nas_vix_atr_risk),
+                    nas_vix_logic,
+                )
+
+        current_nas_vix_config = (
+            '1h',
+            '1h',
+            '5m',
+            nas_vix_start,
+            nas_vix_end,
+            float(nas_vix_threshold),
+            float(nas_vix_atr_risk),
+            nas_vix_logic,
+        )
+        if st.session_state.get('nas_vix_backtest_config') == current_nas_vix_config:
+            nas_vix_summary = st.session_state.get('nas_vix_backtest_summary', {})
+            nas_vix_trades = st.session_state.get(
+                'nas_vix_backtest_trades', pd.DataFrame()
+            )
+            nas_vix_signals = st.session_state.get(
+                'nas_vix_backtest_signals', pd.DataFrame()
+            )
+            if nas_vix_summary and not nas_vix_trades.empty:
+                result_columns = st.columns(6)
+                result_columns[0].metric("Trades", nas_vix_summary['Trades'])
+                result_columns[1].metric("Win Rate", f"{nas_vix_summary['Win Rate %']:.1f}%")
+                result_columns[2].metric("Net R", f"{nas_vix_summary['Net R']:+.2f}R")
+                result_columns[3].metric("Average R", f"{nas_vix_summary['Average R']:+.2f}R")
+                profit_factor = nas_vix_summary['Profit Factor']
+                result_columns[4].metric(
+                    "Profit Factor",
+                    "∞" if np.isinf(profit_factor) else f"{profit_factor:.2f}",
+                )
+                result_columns[5].metric(
+                    "Net Points", f"{nas_vix_summary['Net Points']:+,.2f}"
+                )
+
+                equity_figure = go.Figure()
+                equity_figure.add_trace(go.Scatter(
+                    x=nas_vix_trades['Exit Time'],
+                    y=nas_vix_trades['Cumulative R'],
+                    mode='lines+markers',
+                    name='Cumulative R',
+                ))
+                equity_figure.add_hline(y=0, line_dash='dash', line_color='gray')
+                equity_figure.update_layout(
+                    title='NAS100 VIX-Alert Backtest Equity Curve',
+                    xaxis_title='Trade Exit Time',
+                    yaxis_title='Cumulative R',
+                    template='plotly_dark',
+                )
+                st.plotly_chart(equity_figure, width='stretch')
+
+                trade_columns = [
+                    'Ghana Alert Date', 'VIX Alert Time', 'VIX Z-Score',
+                    'VIX Momentum Z',
+                    'Direction', 'Entry Time', 'Entry Price', 'Stop Price',
+                    'Target Price', 'Target Zone Bottom', 'Target Zone Top',
+                    'Target Liquidity Score', 'Planned Reward/Risk',
+                    'Exit Time', 'Exit Price', 'Exit Reason',
+                    'R Multiple', 'PnL Points', 'Cumulative R',
+                ]
+                if nas_vix_logic == 'logic_2':
+                    trade_columns[4:4] = [
+                        'NAS100 Alert Time', 'NAS100 Z-Score',
+                        'NAS100 Momentum Z',
+                    ]
+                trade_styler = nas_vix_trades[trade_columns].style.format({
+                    'VIX Z-Score': '{:+.2f}',
+                    'VIX Momentum Z': '{:+.2f}',
+                    'NAS100 Z-Score': '{:+.2f}',
+                    'NAS100 Momentum Z': '{:+.2f}',
+                    'Entry Price': '{:.2f}',
+                    'Stop Price': '{:.2f}',
+                    'Target Price': '{:.2f}',
+                    'Target Zone Bottom': '{:.2f}',
+                    'Target Zone Top': '{:.2f}',
+                    'Target Liquidity Score': '{:.1f}',
+                    'Planned Reward/Risk': '{:.2f}',
+                    'Exit Price': '{:.2f}',
+                    'R Multiple': '{:+.2f}R',
+                    'PnL Points': '{:+.2f}',
+                    'Cumulative R': '{:+.2f}R',
+                }).map(
+                    color_metrics,
+                    subset=[column for column in [
+                        'VIX Z-Score', 'VIX Momentum Z', 'NAS100 Z-Score',
+                        'NAS100 Momentum Z', 'R Multiple', 'Cumulative R',
+                    ] if column in trade_columns],
+                )
+                st.dataframe(trade_styler, width='stretch', hide_index=True)
+            elif isinstance(nas_vix_signals, pd.DataFrame) and not nas_vix_signals.empty:
+                st.warning(
+                    "VIX alerts were found, but no NAS100 trades could be completed "
+                    "with the available candles."
+                )
+            else:
+                st.info("No daily VIX Z-Score alerts were found in the selected period.")
+        elif st.session_state.get('nas_vix_backtest_config') is not None:
+            st.info("The settings changed. Run the backtest again to refresh the results.")
 
     if False:  # Removed: Index Spike Alert
         st.subheader("📢 Index Spike Alert Engine")

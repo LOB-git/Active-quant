@@ -29,3 +29,39 @@ Stack (most recent call last):
     check_session_state_rules(
   File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\elements\lib\policies.py", line 92, in check_session_state_rules
     _LOGGER.warning(
+$SPY: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['SPY']: possibly delisted; no price data found  (period=1d)
+$BTC-USD: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['BTC-USD']: possibly delisted; no price data found  (period=1d)
+$BTC-USD: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['BTC-USD']: possibly delisted; no price data found  (period=1d)
+$BTC-USD: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['BTC-USD']: possibly delisted; no price data found  (period=1d)
+Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
