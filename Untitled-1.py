@@ -154,7 +154,7 @@ def fetch_and_analyze(symbol='BTC/USDT', timeframe='1h', start_date=None, end_da
         }
         symbol = symbol_aliases.get(raw_symbol.upper(), raw_symbol)
 
-        stock_index_symbols = ['SPY', 'QQQ', 'DIA', 'NQ=F', '^VIX', 'DX-Y.NYB', 'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'LLY', 'JPM', 'GBPUSD=X', '^FTSE', 'XAUUSD', 'XAUUSD=X', 'GC=F', 'GLD']
+        stock_index_symbols = ['SPY', 'QQQ', 'DIA', 'NQ=F', 'YM=F', '^VIX', 'DX-Y.NYB', 'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'LLY', 'JPM', 'GBPUSD=X', '^FTSE', 'XAUUSD', 'XAUUSD=X', 'GC=F', 'GLD']
         is_stock_index = symbol in stock_index_symbols or raw_symbol in stock_index_symbols or raw_symbol.upper() in stock_index_symbols
 
         # Handle Symbol Formatting (e.g., BTC-USD -> BTC/USDT for Binance)
@@ -3112,9 +3112,12 @@ def main():
 
     with tab3:
         st.subheader("🏛️ Top US Indices & VIX Overview")
-        st.write("Tracking S&P 500 (SPY), Nasdaq 100 (QQQ), NAS100 futures (NQ=F), Dow Jones (DIA), Volatility Index (^VIX), and US Dollar Index (DX-Y.NYB).")
+        st.write("Tracking S&P 500 (SPY), Nasdaq 100 (QQQ), NAS100 futures (NQ=F), Dow Jones (DIA), Dow futures (YM=F), Volatility Index (^VIX), and US Dollar Index (DX-Y.NYB).")
         # Timeframe selector for indices/stocks (15m, 1h, 4h)
         timeframe = st.selectbox("Select timeframe", ["15m", "1h", "4h"], index=1)
+        overview_indices = [
+            'SPY', 'QQQ', 'NQ=F', 'DIA', 'YM=F', '^VIX', 'DX-Y.NYB'
+        ]
 
         with st.expander("US Indices Alert Settings"):
             index_alert_col1, index_alert_col2 = st.columns(2)
@@ -3147,6 +3150,8 @@ def main():
         
         if 'index_stats' not in st.session_state:
             st.session_state.index_stats = []
+        if 'index_missing_symbols' not in st.session_state:
+            st.session_state.index_missing_symbols = []
         if 'index_zscore_alerts' not in st.session_state:
             st.session_state.index_zscore_alerts = []
         if 'index_zscore_alert_keys' not in st.session_state:
@@ -3156,7 +3161,7 @@ def main():
         
         if st.button("Refresh Indices Data"):
             with st.spinner("Fetching US Indices Data..."):
-                indices = ['SPY', 'QQQ', 'NQ=F', 'DIA', '^VIX', 'DX-Y.NYB'] # Main indices for this table
+                indices = overview_indices
                 index_stats = []
                 missing_indices = []
                 daily_ghana_alerts = []
@@ -3255,6 +3260,7 @@ def main():
                 # Save the results to session state
                 st.session_state.index_stats = index_stats
                 st.session_state.index_stats_timeframe = timeframe
+                st.session_state.index_missing_symbols = missing_indices
                 st.session_state.daily_ghana_zscore_alerts = sorted(
                     daily_ghana_alerts,
                     key=lambda alert: alert['Ghana Time'],
@@ -3374,6 +3380,37 @@ def main():
                 "Trend", "Signal Score", "Volume Ratio", "Flow Z-Score",
                 "Z-Score", "Est. Daily Volume"
             ]]
+            loaded_display_symbols = set(df_ind['Symbol'].astype(str))
+            missing_display_symbols = [
+                configured_symbol for configured_symbol in overview_indices
+                if configured_symbol not in loaded_display_symbols
+            ]
+            if missing_display_symbols:
+                unavailable_rows = pd.DataFrame([
+                    {
+                        'Symbol': missing_symbol,
+                        'Breadth Ratio': 'n/a',
+                        'Breadth %': np.nan,
+                        'Price': np.nan,
+                        'Momentum': 'n/a (n/a)',
+                        'RSI': np.nan,
+                        'Trend': 'Data unavailable',
+                        'Signal Score': 'n/a (n/a)',
+                        'Volume Ratio': np.nan,
+                        'Flow Z-Score': 'n/a (n/a)',
+                        'Z-Score': 'n/a (n/a)',
+                        'Est. Daily Volume': np.nan,
+                    }
+                    for missing_symbol in missing_display_symbols
+                ])
+                df_display = pd.concat(
+                    [df_display, unavailable_rows], ignore_index=True
+                )
+                st.warning(
+                    "Yahoo Finance returned no data for: "
+                    + ", ".join(missing_display_symbols)
+                    + ". The symbols remain listed and will be retried on refresh."
+                )
             results_timeframe = st.session_state.get('index_stats_timeframe', timeframe)
             st.caption(
                 f"Bracketed change = current value minus the previous {results_timeframe} candle. "
@@ -3668,7 +3705,7 @@ def main():
         st.subheader("Macro Quant Strength (QS) Comparison")
         st.caption("This table compares major indices and currency pairs using a relative strength model. A higher score indicates stronger performance versus the group.")
 
-        indices_for_qs = ['SPY', 'QQQ', 'NQ=F', 'DIA', 'DX-Y.NYB', '^FTSE', 'GBPUSD=X', 'XAUUSD']
+        indices_for_qs = ['SPY', 'QQQ', 'NQ=F', 'DIA', 'YM=F', 'DX-Y.NYB', '^FTSE', 'GBPUSD=X', 'XAUUSD']
         if st.button("Refresh Macro QS Comparison"):
             qs_indices_data = []
             with st.spinner("Fetching macro comparison data..."):
@@ -3738,7 +3775,7 @@ def main():
             else indices_for_qs
         )
         z_chart_symbols = list(dict.fromkeys(
-            ['BTC/USD', 'NQ=F'] + z_chart_base_symbols
+            ['BTC/USD', 'NQ=F', 'YM=F'] + z_chart_base_symbols
         ))
         if z_chart_symbols:
             z_chart_asset = st.selectbox("Select Asset for Z-Score Chart", options=z_chart_symbols)
