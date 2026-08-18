@@ -4143,6 +4143,150 @@ def main():
                         else:
                             st.info("No downward moves were detected on the selected date.")
 
+                        # --- Demand / Supply analysis at the largest Flow Z rise ---
+                        flow_series_for_rise = z_df['Flow (z)'].dropna()
+                        flow_rise_changes = flow_series_for_rise.diff().dropna()
+                        positive_flow_rises = flow_rise_changes[
+                            flow_rise_changes > 0
+                        ]
+                        if positive_flow_rises.empty:
+                            st.info(
+                                "No upward Flow Z event was detected on the selected date, "
+                                "so no rise-event demand/supply zone can be classified."
+                            )
+                        else:
+                            highest_rise_time = pd.Timestamp(
+                                positive_flow_rises.idxmax()
+                            )
+                            highest_rise_size = float(
+                                positive_flow_rises.loc[highest_rise_time]
+                            )
+                            rise_position = z_df.index.get_indexer(
+                                [highest_rise_time]
+                            )[0]
+                            if rise_position > 0:
+                                rise_current = z_df.iloc[rise_position]
+                                rise_previous = z_df.iloc[rise_position - 1]
+                                rise_flow_change = float(
+                                    rise_current['Flow (z)']
+                                    - rise_previous['Flow (z)']
+                                )
+                                rise_momentum_change = float(
+                                    rise_current['Momentum (z)']
+                                    - rise_previous['Momentum (z)']
+                                )
+                                rise_volatility_change = float(
+                                    rise_current['Volatility (z)']
+                                    - rise_previous['Volatility (z)']
+                                )
+
+                                rise_price_row = df_z_hist.loc[highest_rise_time]
+                                if isinstance(rise_price_row, pd.DataFrame):
+                                    rise_price_row = rise_price_row.iloc[-1]
+                                rise_full_position = df_z_hist.index.get_indexer(
+                                    [highest_rise_time]
+                                )[0]
+                                rise_previous_close = (
+                                    float(df_z_hist['close'].iloc[rise_full_position - 1])
+                                    if rise_full_position > 0
+                                    else float(rise_price_row['open'])
+                                )
+                                rise_price_change = (
+                                    float(rise_price_row['close'])
+                                    - rise_previous_close
+                                )
+
+                                rise_flow_contribution = (
+                                    0.60 * np.tanh(rise_flow_change)
+                                )
+                                rise_momentum_contribution = (
+                                    0.25 * np.tanh(rise_momentum_change)
+                                )
+                                rise_volatility_direction = (
+                                    np.sign(rise_price_change)
+                                    * np.tanh(abs(rise_volatility_change))
+                                    if rise_volatility_change > 0
+                                    else 0.0
+                                )
+                                rise_volatility_contribution = (
+                                    0.15 * rise_volatility_direction
+                                )
+                                rise_direction_score = 100 * (
+                                    rise_flow_contribution
+                                    + rise_momentum_contribution
+                                    + rise_volatility_contribution
+                                )
+                                if rise_direction_score >= 10:
+                                    rise_classification = 'Candidate Demand Zone'
+                                elif rise_direction_score <= -10:
+                                    rise_classification = 'Candidate Supply Zone'
+                                else:
+                                    rise_classification = 'Unresolved / Balanced Zone'
+
+                                rise_volatility_regime = (
+                                    'Expansion'
+                                    if rise_volatility_change > 0
+                                    else 'Compression'
+                                    if rise_volatility_change < 0
+                                    else 'Unchanged'
+                                )
+                                st.subheader(
+                                    "Demand & Supply Analysis — Highest Flow Z Rise"
+                                )
+                                st.caption(
+                                    "The largest upward Flow Z event is the primary demand "
+                                    "candidate. Momentum Z and directional volatility provide "
+                                    "confirmation using the same 60% / 25% / 15% weighting."
+                                )
+                                rise_metrics = st.columns(5)
+                                rise_metrics[0].metric(
+                                    "Classification", rise_classification
+                                )
+                                rise_metrics[1].metric(
+                                    "Direction Score",
+                                    f"{rise_direction_score:+.1f}",
+                                )
+                                rise_metrics[2].metric(
+                                    "Analyzed Component", "Flow (z)"
+                                )
+                                rise_metrics[3].metric(
+                                    "Rise Size", f"{highest_rise_size:.2f}σ"
+                                )
+                                rise_metrics[4].metric(
+                                    "Volatility Regime", rise_volatility_regime
+                                )
+
+                                rise_zone_details = pd.DataFrame([{
+                                    'Asset': z_chart_asset,
+                                    'Event Time': highest_rise_time,
+                                    'Zone Bottom': float(rise_price_row['low']),
+                                    'Zone Top': float(rise_price_row['high']),
+                                    'Close': float(rise_price_row['close']),
+                                    'Flow Z Change': rise_flow_change,
+                                    'Momentum Z Change': rise_momentum_change,
+                                    'Volatility Z Change': rise_volatility_change,
+                                    'Price Change': rise_price_change,
+                                    'Flow Contribution': rise_flow_contribution * 100,
+                                    'Momentum Contribution': rise_momentum_contribution * 100,
+                                    'Volatility Contribution': rise_volatility_contribution * 100,
+                                }])
+                                st.dataframe(
+                                    rise_zone_details.style.format({
+                                        'Zone Bottom': '{:.2f}',
+                                        'Zone Top': '{:.2f}',
+                                        'Close': '{:.2f}',
+                                        'Flow Z Change': '{:+.3f}',
+                                        'Momentum Z Change': '{:+.3f}',
+                                        'Volatility Z Change': '{:+.3f}',
+                                        'Price Change': '{:+.2f}',
+                                        'Flow Contribution': '{:+.1f}',
+                                        'Momentum Contribution': '{:+.1f}',
+                                        'Volatility Contribution': '{:+.1f}',
+                                    }),
+                                    width='stretch',
+                                    hide_index=True,
+                                )
+
         # --- Zone Battle Score ---
         st.divider()
         st.subheader("⚔️ Zone Battle Score")
