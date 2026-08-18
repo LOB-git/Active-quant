@@ -2057,6 +2057,7 @@ def backtest_nas100_from_vix_daily_alerts(
     end_date=None,
     strategy_logic='logic_1',
     stored_daily_alerts=None,
+    component_drop_threshold=0.5,
 ):
     """Trade NQ futures in the opposite direction of daily VIX Z-score alerts."""
     using_stored_alerts = stored_daily_alerts is not None and len(stored_daily_alerts) > 0
@@ -2100,8 +2101,9 @@ def backtest_nas100_from_vix_daily_alerts(
         stored_alerts_df['Ghana Time'] = pd.to_datetime(
             stored_alerts_df['Ghana Time'], utc=True
         )
+        anchor_symbol = 'NQ=F' if strategy_logic == 'logic_3' else '^VIX'
         signals = stored_alerts_df.loc[
-            (stored_alerts_df['Symbol'] == '^VIX')
+            (stored_alerts_df['Symbol'] == anchor_symbol)
             & (stored_alerts_df['Timeframe'] == alert_timeframe)
         ].sort_values('Ghana Time')
     else:
@@ -2216,6 +2218,126 @@ def backtest_nas100_from_vix_daily_alerts(
         signals = pd.DataFrame(confirmed_rows)
         if signals.empty:
             return {}, pd.DataFrame(), signals
+    elif strategy_logic == 'logic_3':
+        component_data = nas_alert_source.copy().sort_index()
+
+        def component_zscore(series, window=50):
+            numeric = pd.to_numeric(series, errors='coerce')
+            return (
+                (numeric - numeric.rolling(window).mean())
+                / numeric.rolling(window).std().replace(0, np.nan)
+            )
+
+        component_data['Momentum Z'] = component_zscore(
+            component_data['momentum']
+        )
+        is_up_candle = component_data['close'] >= component_data['open']
+        component_inflow = component_data['volume'].where(is_up_candle, 0.0)
+        component_outflow = component_data['volume'].where(~is_up_candle, 0.0)
+        rolling_inflow = component_inflow.rolling(20).sum()
+        rolling_outflow = component_outflow.rolling(20).sum()
+        component_flow = (
+            (rolling_inflow - rolling_outflow)
+            / (rolling_inflow + rolling_outflow).replace(0, np.nan)
+        )
+        component_data['Flow Z'] = component_zscore(component_flow)
+        component_atr = pd.to_numeric(
+            component_data.get('atr14'), errors='coerce'
+        )
+        component_data['Volatility Z'] = component_zscore(component_atr)
+        component_data['Trend Z'] = component_zscore(component_data['z_score'])
+        component_columns = [
+            'Momentum Z', 'Flow Z', 'Volatility Z', 'Trend Z'
+        ]
+        component_data['Highest Component Z'] = component_data[
+            component_columns
+        ].max(axis=1)
+        component_data['Lowest Component Z'] = component_data[
+            component_columns
+        ].min(axis=1)
+        component_data['Component Dispersion'] = (
+            component_data['Highest Component Z']
+            - component_data['Lowest Component Z']
+        )
+        component_data['Highest-Z Drop'] = (
+            component_data['Highest Component Z'].shift(1)
+            - component_data['Highest Component Z']
+        )
+        component_data['Lowest-Z Recovery'] = (
+            component_data['Lowest Component Z']
+            - component_data['Lowest Component Z'].shift(1)
+        )
+        component_data['Momentum Z Change'] = component_data['Momentum Z'].diff()
+        component_data['Flow Z Change'] = component_data['Flow Z'].diff()
+        component_data['Dispersion Change'] = component_data[
+            'Component Dispersion'
+        ].diff()
+
+        component_times = pd.DatetimeIndex(component_data.index)
+        if component_times.tz is None:
+            component_times = component_times.tz_localize('UTC')
+        else:
+            component_times = component_times.tz_convert('UTC')
+        component_data['Component Time'] = component_times + nas_alert_duration
+
+        confirmed_rows = []
+        ordered_alerts = signals.sort_values('Ghana Time').reset_index(drop=True)
+        for alert_position, historical_alert in ordered_alerts.iterrows():
+            alert_time = pd.Timestamp(historical_alert['Ghana Time'])
+            next_alert_time = (
+                pd.Timestamp(ordered_alerts.iloc[alert_position + 1]['Ghana Time'])
+                if alert_position + 1 < len(ordered_alerts)
+                else None
+            )
+            candidates = component_data.loc[
+                component_data['Component Time'] > alert_time
+            ].copy()
+            if next_alert_time is not None:
+                candidates = candidates.loc[
+                    candidates['Component Time'] < next_alert_time
+                ]
+
+            if historical_alert['Alert'] == 'POSITIVE Z-SCORE':
+                confirmation_mask = (
+                    (candidates['Highest Component Z'] >= float(z_threshold))
+                    & (candidates['Highest-Z Drop'] >= float(component_drop_threshold))
+                    & (candidates['Momentum Z Change'] < 0)
+                    & (candidates['Flow Z Change'] < 0)
+                    & (candidates['Dispersion Change'] < 0)
+                )
+                trade_direction = 'SHORT'
+            else:
+                confirmation_mask = (
+                    (candidates['Lowest Component Z'] <= -float(z_threshold))
+                    & (candidates['Lowest-Z Recovery'] >= float(component_drop_threshold))
+                    & (candidates['Momentum Z Change'] > 0)
+                    & (candidates['Flow Z Change'] > 0)
+                    & (candidates['Dispersion Change'] < 0)
+                )
+                trade_direction = 'LONG'
+
+            confirmations = candidates.loc[confirmation_mask]
+            if confirmations.empty:
+                continue
+            confirmation = confirmations.iloc[0]
+            confirmed = historical_alert.to_dict()
+            confirmed.update({
+                'Execution Time': confirmation['Component Time'],
+                'Trade Direction': trade_direction,
+                'Highest Component Z': float(confirmation['Highest Component Z']),
+                'Lowest Component Z': float(confirmation['Lowest Component Z']),
+                'Highest-Z Drop': float(confirmation['Highest-Z Drop']),
+                'Lowest-Z Recovery': float(confirmation['Lowest-Z Recovery']),
+                'Momentum Z Change': float(confirmation['Momentum Z Change']),
+                'Flow Z Change': float(confirmation['Flow Z Change']),
+                'Component Dispersion': float(confirmation['Component Dispersion']),
+                'Dispersion Change': float(confirmation['Dispersion Change']),
+            })
+            confirmed_rows.append(confirmed)
+
+        signals = pd.DataFrame(confirmed_rows)
+        if signals.empty:
+            return {}, pd.DataFrame(), signals
 
     nas_index = pd.DatetimeIndex(nas.index)
     signal_index = pd.DatetimeIndex(signals['Execution Time'])
@@ -2250,7 +2372,9 @@ def backtest_nas100_from_vix_daily_alerts(
         if not np.isfinite(entry_price) or not np.isfinite(atr) or atr <= 0:
             continue
 
-        if strategy_logic == 'logic_2':
+        if strategy_logic == 'logic_3':
+            direction = signal['Trade Direction']
+        elif strategy_logic == 'logic_2':
             direction = 'LONG' if signal['Alert'] == 'POSITIVE Z-SCORE' else 'SHORT'
         else:
             direction = 'SHORT' if signal['Alert'] == 'POSITIVE Z-SCORE' else 'LONG'
@@ -2329,12 +2453,24 @@ def backtest_nas100_from_vix_daily_alerts(
         r_multiple = pnl_points / risk_distance
         trades.append({
             'Ghana Alert Date': signal['Ghana Date'],
+            'Alert Source': signal.get('Symbol', '^VIX'),
+            'Historical Alert Time': signal['Ghana Time'],
+            'Historical Alert Z-Score': float(signal['Z-Score']),
+            'Historical Alert Momentum Z': float(signal['Momentum Z']),
             'VIX Alert Time': signal['Ghana Time'],
             'VIX Z-Score': float(signal['Z-Score']),
             'VIX Momentum Z': float(signal['Momentum Z']),
             'NAS100 Alert Time': signal.get('NAS100 Alert Time', pd.NaT),
             'NAS100 Z-Score': float(signal.get('NAS100 Z-Score', np.nan)),
             'NAS100 Momentum Z': float(signal.get('NAS100 Momentum Z', np.nan)),
+            'Highest Component Z': float(signal.get('Highest Component Z', np.nan)),
+            'Lowest Component Z': float(signal.get('Lowest Component Z', np.nan)),
+            'Highest-Z Drop': float(signal.get('Highest-Z Drop', np.nan)),
+            'Lowest-Z Recovery': float(signal.get('Lowest-Z Recovery', np.nan)),
+            'Momentum Z Change': float(signal.get('Momentum Z Change', np.nan)),
+            'Flow Z Change': float(signal.get('Flow Z Change', np.nan)),
+            'Component Dispersion': float(signal.get('Component Dispersion', np.nan)),
+            'Dispersion Change': float(signal.get('Dispersion Change', np.nan)),
             'Direction': direction,
             'Entry Time': nas_comparison_index[entry_position],
             'Entry Price': entry_price,
@@ -3517,7 +3653,7 @@ def main():
             st.subheader("🛡️ Index & Macro GEX (Gamma Exposure)")
             st.write("Analyze total GEX (notional) for major indices and macro assets. Polygon options is used when available; otherwise a volatility-based proxy is shown.")
 
-            gex_assets = ['QQQ', 'SPY', 'DIA', '^VIX', 'GBPUSD=X', 'DIX', '^FTSE', 'XAUUSD']
+            gex_assets = ['QQQ', 'NQ=F', 'SPY', 'DIA', 'YM=F', '^VIX', 'GBPUSD=X', 'DIX', '^FTSE', 'XAUUSD']
             gex_choice = st.selectbox("Select asset for GEX analysis", options=gex_assets, index=0)
             gex_timeframe = st.selectbox("Select timeframe for price/volatility (proxy)", options=['5m', '15m', '1h', '4h', '12h', '1d'], index=2)
 
@@ -3601,7 +3737,7 @@ def main():
 
         if st.button("Refresh Order Flow"):
             with st.spinner(f"Calculating order flow for {flow_tf} timeframe..."):
-                indices = ['SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB']
+                indices = ['SPY', 'QQQ', 'NQ=F', 'DIA', 'YM=F', '^VIX', 'DX-Y.NYB']
                 order_flow_data = []
                 st.session_state.order_flow_history = {} # Clear previous history
                 for sym in indices:
@@ -3664,12 +3800,12 @@ def main():
 
 
         st.divider()
-        st.subheader("💰 Daily ETF Inflow / Outflow (SPY, QQQ, NQ=F, DIA, BTC/USD)")
+        st.subheader("💰 Daily ETF Inflow / Outflow (SPY, QQQ, NQ=F, DIA, YM=F, BTC/USD)")
         st.caption("This section shows intraday inflow and outflow for the major index ETFs and BTC/USD across 5m, 15m, 1h, and 4h candles so you can monitor real-time market momentum.")
 
         timeframes = [('5m', '5m'), ('15m', '15m'), ('1h', '1h'), ('4h', '4h')]
         daily_flow_rows = []
-        for symbol in ['SPY', 'QQQ', 'NQ=F', 'DIA', 'BTC/USD']:
+        for symbol in ['SPY', 'QQQ', 'NQ=F', 'DIA', 'YM=F', 'BTC/USD']:
             row = {'Symbol': symbol}
             for label, interval in timeframes:
                 flow_summary = get_intraday_money_flow(symbol, interval=interval, period='1d')
@@ -3865,6 +4001,145 @@ def main():
                                 'Current Value': '{:.3f}',
                                 'Drop Size': '{:.3f}'
                             }), width='stretch')
+
+                            # --- Demand / Supply analysis at the largest Flow Z drop ---
+                            flow_drop_events = [
+                                event for event in drop_events
+                                if event['Component'] == 'Flow (z)'
+                            ]
+                            if not flow_drop_events:
+                                st.info(
+                                    "No downward Flow Z event was detected on the selected date, "
+                                    "so no demand/supply zone can be classified from Flow."
+                                )
+                            highest_drop = max(
+                                flow_drop_events,
+                                key=lambda event: event['Drop Size'],
+                                default={
+                                    'Component': 'Flow (z)',
+                                    'Drop Time': z_df.index[0],
+                                    'Previous Value': np.nan,
+                                    'Current Value': np.nan,
+                                    'Drop Size': np.nan,
+                                },
+                            )
+                            highest_drop_time = pd.Timestamp(highest_drop['Drop Time'])
+                            drop_position = z_df.index.get_indexer([highest_drop_time])[0]
+                            if drop_position > 0:
+                                current_components = z_df.iloc[drop_position]
+                                previous_components = z_df.iloc[drop_position - 1]
+                                flow_change = float(
+                                    current_components['Flow (z)']
+                                    - previous_components['Flow (z)']
+                                )
+                                momentum_change = float(
+                                    current_components['Momentum (z)']
+                                    - previous_components['Momentum (z)']
+                                )
+                                volatility_change = float(
+                                    current_components['Volatility (z)']
+                                    - previous_components['Volatility (z)']
+                                )
+
+                                price_row = df_z_hist.loc[highest_drop_time]
+                                if isinstance(price_row, pd.DataFrame):
+                                    price_row = price_row.iloc[-1]
+                                full_price_position = df_z_hist.index.get_indexer(
+                                    [highest_drop_time]
+                                )[0]
+                                previous_close = (
+                                    float(df_z_hist['close'].iloc[full_price_position - 1])
+                                    if full_price_position > 0
+                                    else float(price_row['open'])
+                                )
+                                price_change = float(price_row['close']) - previous_close
+
+                                flow_contribution = 0.60 * np.tanh(flow_change)
+                                momentum_contribution = 0.25 * np.tanh(momentum_change)
+                                # Volatility supplies magnitude, not direction. Expansion
+                                # confirms the direction of the contemporaneous price move;
+                                # compression is recorded as neutral directional evidence.
+                                volatility_direction = (
+                                    np.sign(price_change) * np.tanh(abs(volatility_change))
+                                    if volatility_change > 0 else 0.0
+                                )
+                                volatility_contribution = 0.15 * volatility_direction
+                                zone_direction_score = 100 * (
+                                    flow_contribution
+                                    + momentum_contribution
+                                    + volatility_contribution
+                                )
+                                if zone_direction_score >= 10:
+                                    zone_classification = 'Candidate Demand Zone'
+                                elif zone_direction_score <= -10:
+                                    zone_classification = 'Candidate Supply Zone'
+                                else:
+                                    zone_classification = 'Unresolved / Balanced Zone'
+
+                                volatility_regime = (
+                                    'Expansion'
+                                    if volatility_change > 0
+                                    else 'Compression'
+                                    if volatility_change < 0
+                                    else 'Unchanged'
+                                )
+                                st.subheader(
+                                    "Demand & Supply Analysis — Highest Flow Z Drop"
+                                )
+                                st.caption(
+                                    "Zone Direction Score = 60% Flow Z change + 25% "
+                                    "Momentum Z change + 15% directional volatility regime. "
+                                    "The candle range is a candidate zone, not order-book proof."
+                                )
+                                demand_supply_metrics = st.columns(5)
+                                demand_supply_metrics[0].metric(
+                                    "Classification", zone_classification
+                                )
+                                demand_supply_metrics[1].metric(
+                                    "Direction Score",
+                                    f"{zone_direction_score:+.1f}",
+                                )
+                                demand_supply_metrics[2].metric(
+                                    "Analyzed Component",
+                                    "Flow (z)",
+                                )
+                                demand_supply_metrics[3].metric(
+                                    "Drop Size", f"{highest_drop['Drop Size']:.2f}σ"
+                                )
+                                demand_supply_metrics[4].metric(
+                                    "Volatility Regime", volatility_regime
+                                )
+
+                                zone_details = pd.DataFrame([{
+                                    'Asset': z_chart_asset,
+                                    'Event Time': highest_drop_time,
+                                    'Zone Bottom': float(price_row['low']),
+                                    'Zone Top': float(price_row['high']),
+                                    'Close': float(price_row['close']),
+                                    'Flow Z Change': flow_change,
+                                    'Momentum Z Change': momentum_change,
+                                    'Volatility Z Change': volatility_change,
+                                    'Price Change': price_change,
+                                    'Flow Contribution': flow_contribution * 100,
+                                    'Momentum Contribution': momentum_contribution * 100,
+                                    'Volatility Contribution': volatility_contribution * 100,
+                                }])
+                                st.dataframe(
+                                    zone_details.style.format({
+                                        'Zone Bottom': '{:.2f}',
+                                        'Zone Top': '{:.2f}',
+                                        'Close': '{:.2f}',
+                                        'Flow Z Change': '{:+.3f}',
+                                        'Momentum Z Change': '{:+.3f}',
+                                        'Volatility Z Change': '{:+.3f}',
+                                        'Price Change': '{:+.2f}',
+                                        'Flow Contribution': '{:+.1f}',
+                                        'Momentum Contribution': '{:+.1f}',
+                                        'Volatility Contribution': '{:+.1f}',
+                                    }),
+                                    width='stretch',
+                                    hide_index=True,
+                                )
                         else:
                             st.info("No downward moves were detected on the selected date.")
 
@@ -3881,7 +4156,7 @@ def main():
             zone_asset = st.selectbox(
                 "Zone Battle asset",
                 options=[
-                    'SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB',
+                    'SPY', 'QQQ', 'NQ=F', 'DIA', 'YM=F', '^VIX', 'DX-Y.NYB',
                     '^FTSE', 'XAUUSD', 'GBPUSD=X',
                 ],
                 index=0,
@@ -4052,7 +4327,7 @@ def main():
             liquidity_asset = st.selectbox(
                 "Liquidity Zone asset",
                 options=[
-                    'SPY', 'QQQ', 'DIA', '^VIX', 'DX-Y.NYB',
+                    'SPY', 'QQQ', 'NQ=F', 'DIA', 'YM=F', '^VIX', 'DX-Y.NYB',
                     '^FTSE', 'XAUUSD', 'GBPUSD=X',
                 ],
                 index=0,
@@ -4207,7 +4482,7 @@ Each component is standardized across the displayed price bands before the weigh
 
         # --- Volume Delta for US Indices and Macro Assets ---
         st.divider()
-        st.subheader("Volume Delta: SPY, QQQ, DIA, XAU/USD, and FTSE")
+        st.subheader("Volume Delta: SPY, QQQ, NQ=F, DIA, YM=F, XAU/USD, and FTSE")
         st.caption("Volume Delta = volume on up candles minus volume on down candles. Positive values indicate net buying pressure; negative values indicate net selling pressure.")
         macro_delta_timeframe = st.selectbox(
             "Volume Delta timeframe",
@@ -4218,7 +4493,9 @@ Each component is standardized across the displayed price bands before the weigh
         macro_delta_assets = {
             'SPY': 'SPY',
             'QQQ': 'QQQ',
+            'NQ=F': 'NQ=F',
             'DIA': 'DIA',
+            'YM=F': 'YM=F',
             'XAU/USD': 'XAUUSD',
             'FTSE': '^FTSE'
         }
@@ -4227,7 +4504,7 @@ Each component is standardized across the displayed price bands before the weigh
         if st.button("Refresh Index & Macro Volume Delta", key='refresh_macro_volume_delta'):
             macro_delta_rows = []
             macro_delta_history = {}
-            with st.spinner("Calculating volume delta for SPY, QQQ, DIA, XAU/USD, and FTSE..."):
+            with st.spinner("Calculating volume delta for SPY, QQQ, NQ=F, DIA, YM=F, XAU/USD, and FTSE..."):
                 for display_symbol, data_symbol in macro_delta_assets.items():
                     delta_df = fetch_and_analyze(data_symbol, timeframe=macro_delta_timeframe, silent=True, limit=500)
                     if delta_df is None or delta_df.empty:
@@ -5353,11 +5630,13 @@ Each component is standardized across the displayed price bands before the weigh
         with nas_logic_col1:
             nas_vix_logic = st.selectbox(
                 "Backtest logic",
-                options=['logic_1', 'logic_2'],
+                options=['logic_1', 'logic_2', 'logic_3'],
                 format_func=lambda logic: (
                     "Logic 1 — Trade opposite the VIX alert"
                     if logic == 'logic_1'
                     else "Logic 2 — Wait for matching NAS100 alert"
+                    if logic == 'logic_2'
+                    else "Logic 3 — Z-component reversal"
                 ),
                 key='nas_vix_backtest_logic',
             )
@@ -5371,11 +5650,28 @@ Each component is standardized across the displayed price bands before the weigh
                 "Logic 1: positive aligned VIX alert → SELL NAS100; "
                 "negative aligned VIX alert → BUY NAS100."
             )
-        else:
+        elif nas_vix_logic == 'logic_2':
             st.caption(
                 "Logic 2: wait for the first VIX alert, then the first later NAS100 "
                 "alert with the same sign. Positive + positive → BUY; "
                 "negative + negative → SELL."
+            )
+        else:
+            st.caption(
+                "Logic 3: use the stored NAS100 historical alert, then wait for "
+                "the strongest/weakest Z component to reverse by the selected amount, "
+                "with Momentum Z, Flow Z, and dispersion confirming the reversal."
+            )
+
+        component_drop_threshold = 0.5
+        if nas_vix_logic == 'logic_3':
+            component_drop_threshold = st.number_input(
+                "Minimum component reversal",
+                min_value=0.1,
+                max_value=3.0,
+                value=0.5,
+                step=0.1,
+                key='nas_component_drop_threshold',
             )
 
         stored_backtest_alerts = st.session_state.get(
@@ -5385,8 +5681,12 @@ Each component is standardized across the displayed price bands before the weigh
             alert.get('Symbol') for alert in stored_backtest_alerts
             if isinstance(alert, dict)
         }
-        required_stored_symbols = {'^VIX'} | (
-            {'NQ=F'} if nas_vix_logic == 'logic_2' else set()
+        required_stored_symbols = (
+            {'^VIX'}
+            if nas_vix_logic == 'logic_1'
+            else {'^VIX', 'NQ=F'}
+            if nas_vix_logic == 'logic_2'
+            else {'NQ=F'}
         )
         stored_alerts_ready = (
             bool(stored_backtest_alerts)
@@ -5442,6 +5742,7 @@ Each component is standardized across the displayed price bands before the weigh
                             end_date=nas_vix_end,
                             strategy_logic=nas_vix_logic,
                             stored_daily_alerts=stored_backtest_alerts,
+                            component_drop_threshold=float(component_drop_threshold),
                         )
                     )
                 st.session_state['nas_vix_backtest_summary'] = nas_vix_summary
@@ -5456,6 +5757,7 @@ Each component is standardized across the displayed price bands before the weigh
                     float(nas_vix_threshold),
                     float(nas_vix_atr_risk),
                     nas_vix_logic,
+                    float(component_drop_threshold),
                 )
 
         current_nas_vix_config = (
@@ -5467,6 +5769,7 @@ Each component is standardized across the displayed price bands before the weigh
             float(nas_vix_threshold),
             float(nas_vix_atr_risk),
             nas_vix_logic,
+            float(component_drop_threshold),
         )
         if st.session_state.get('nas_vix_backtest_config') == current_nas_vix_config:
             nas_vix_summary = st.session_state.get('nas_vix_backtest_summary', {})
@@ -5500,7 +5803,7 @@ Each component is standardized across the displayed price bands before the weigh
                 ))
                 equity_figure.add_hline(y=0, line_dash='dash', line_color='gray')
                 equity_figure.update_layout(
-                    title='NAS100 VIX-Alert Backtest Equity Curve',
+                    title=f'NAS100 {nas_vix_logic.replace("_", " ").title()} Backtest Equity Curve',
                     xaxis_title='Trade Exit Time',
                     yaxis_title='Cumulative R',
                     template='plotly_dark',
@@ -5521,11 +5824,36 @@ Each component is standardized across the displayed price bands before the weigh
                         'NAS100 Alert Time', 'NAS100 Z-Score',
                         'NAS100 Momentum Z',
                     ]
+                elif nas_vix_logic == 'logic_3':
+                    trade_columns = [
+                        'Ghana Alert Date', 'Alert Source',
+                        'Historical Alert Time', 'Historical Alert Z-Score',
+                        'Historical Alert Momentum Z',
+                        'Highest Component Z', 'Lowest Component Z',
+                        'Highest-Z Drop', 'Lowest-Z Recovery',
+                        'Momentum Z Change', 'Flow Z Change',
+                        'Component Dispersion', 'Dispersion Change',
+                        'Direction', 'Entry Time', 'Entry Price', 'Stop Price',
+                        'Target Price', 'Target Zone Bottom', 'Target Zone Top',
+                        'Target Liquidity Score', 'Planned Reward/Risk',
+                        'Exit Time', 'Exit Price', 'Exit Reason',
+                        'R Multiple', 'PnL Points', 'Cumulative R',
+                    ]
                 trade_styler = nas_vix_trades[trade_columns].style.format({
                     'VIX Z-Score': '{:+.2f}',
                     'VIX Momentum Z': '{:+.2f}',
+                    'Historical Alert Z-Score': '{:+.2f}',
+                    'Historical Alert Momentum Z': '{:+.2f}',
                     'NAS100 Z-Score': '{:+.2f}',
                     'NAS100 Momentum Z': '{:+.2f}',
+                    'Highest Component Z': '{:+.2f}',
+                    'Lowest Component Z': '{:+.2f}',
+                    'Highest-Z Drop': '{:+.2f}',
+                    'Lowest-Z Recovery': '{:+.2f}',
+                    'Momentum Z Change': '{:+.2f}',
+                    'Flow Z Change': '{:+.2f}',
+                    'Component Dispersion': '{:.2f}',
+                    'Dispersion Change': '{:+.2f}',
                     'Entry Price': '{:.2f}',
                     'Stop Price': '{:.2f}',
                     'Target Price': '{:.2f}',
@@ -5542,16 +5870,24 @@ Each component is standardized across the displayed price bands before the weigh
                     subset=[column for column in [
                         'VIX Z-Score', 'VIX Momentum Z', 'NAS100 Z-Score',
                         'NAS100 Momentum Z', 'R Multiple', 'Cumulative R',
+                        'Highest Component Z', 'Lowest Component Z',
+                        'Highest-Z Drop', 'Lowest-Z Recovery',
+                        'Momentum Z Change', 'Flow Z Change',
+                        'Dispersion Change',
+                        'Historical Alert Z-Score',
+                        'Historical Alert Momentum Z',
                     ] if column in trade_columns],
                 )
                 st.dataframe(trade_styler, width='stretch', hide_index=True)
             elif isinstance(nas_vix_signals, pd.DataFrame) and not nas_vix_signals.empty:
                 st.warning(
-                    "VIX alerts were found, but no NAS100 trades could be completed "
+                    "Qualifying alerts were found, but no NAS100 trades could be completed "
                     "with the available candles."
                 )
             else:
-                st.info("No daily VIX Z-Score alerts were found in the selected period.")
+                st.info(
+                    "No alerts completed all requirements for the selected logic and period."
+                )
         elif st.session_state.get('nas_vix_backtest_config') is not None:
             st.info("The settings changed. Run the backtest again to refresh the results.")
 
