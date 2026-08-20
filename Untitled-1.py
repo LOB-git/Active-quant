@@ -2681,6 +2681,210 @@ def build_derivative_factor_history(symbol, timeframe='1h', flow_timeframe='1h',
         return None
 
 
+DEXSCREENER_HISTORY_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'dexscreener_meme_history.csv'
+)
+
+
+def _safe_number(value, default=np.nan):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _cross_section_z(series):
+    values = pd.to_numeric(series, errors='coerce')
+    std = values.std(ddof=1)
+    if pd.isna(std) or std == 0:
+        return pd.Series(0.0, index=values.index)
+    return (values - values.mean()) / std
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_dexscreener_pairs(discovery_mode='Top boosted', query='meme', limit=20):
+    """Fetch liquid token pairs from Dexscreener's documented public API."""
+    headers = {'Accept': 'application/json', 'User-Agent': 'Hashem-Quant/1.0'}
+    pairs = []
+    if discovery_mode == 'Search':
+        response = requests.get(
+            'https://api.dexscreener.com/latest/dex/search',
+            params={'q': query.strip() or 'meme'}, headers=headers, timeout=15,
+        )
+        response.raise_for_status()
+        pairs = response.json().get('pairs') or []
+    else:
+        response = requests.get(
+            'https://api.dexscreener.com/token-boosts/top/v1',
+            headers=headers, timeout=15,
+        )
+        response.raise_for_status()
+        boosted = response.json() or []
+        seen_tokens = set()
+        for token in boosted:
+            chain = token.get('chainId')
+            address = token.get('tokenAddress')
+            token_key = (chain, address)
+            if not chain or not address or token_key in seen_tokens:
+                continue
+            seen_tokens.add(token_key)
+            pair_response = requests.get(
+                f'https://api.dexscreener.com/token-pairs/v1/{chain}/{address}',
+                headers=headers, timeout=15,
+            )
+            if not pair_response.ok:
+                continue
+            token_pairs = pair_response.json() or []
+            if token_pairs:
+                pairs.append(max(
+                    token_pairs,
+                    key=lambda item: _safe_number((item.get('liquidity') or {}).get('usd'), 0),
+                ))
+            if len(pairs) >= int(limit):
+                break
+
+    unique_pairs = {}
+    for pair in pairs:
+        key = (pair.get('chainId'), pair.get('pairAddress'))
+        if key[0] and key[1]:
+            current_liquidity = _safe_number((pair.get('liquidity') or {}).get('usd'), 0)
+            old_liquidity = _safe_number(
+                (unique_pairs.get(key, {}).get('liquidity') or {}).get('usd'), -1
+            )
+            if current_liquidity > old_liquidity:
+                unique_pairs[key] = pair
+    return sorted(
+        unique_pairs.values(),
+        key=lambda item: _safe_number((item.get('liquidity') or {}).get('usd'), 0),
+        reverse=True,
+    )[:int(limit)]
+
+
+def build_dexscreener_overview(pairs, horizon='h1'):
+    """Adapt the US-indices overview factors to Dexscreener pair statistics."""
+    expected_h24_fraction = {'m5': 1 / 288, 'h1': 1 / 24, 'h6': 1 / 4, 'h24': 1}
+    rows = []
+    for pair in pairs:
+        base = pair.get('baseToken') or {}
+        quote = pair.get('quoteToken') or {}
+        txns = (pair.get('txns') or {}).get(horizon) or {}
+        buys = _safe_number(txns.get('buys'), 0)
+        sells = _safe_number(txns.get('sells'), 0)
+        transaction_count = buys + sells
+        flow = (buys - sells) / transaction_count if transaction_count else 0.0
+        volume = _safe_number((pair.get('volume') or {}).get(horizon), 0)
+        h24_volume = _safe_number((pair.get('volume') or {}).get('h24'), 0)
+        expected_volume = h24_volume * expected_h24_fraction[horizon]
+        volume_ratio = volume / expected_volume if expected_volume > 0 else 0.0
+        rows.append({
+            'Asset': f"{base.get('symbol', '?')}/{quote.get('symbol', '?')}",
+            'Name': base.get('name') or base.get('symbol') or 'Unknown',
+            'Chain': pair.get('chainId') or '',
+            'DEX': pair.get('dexId') or '',
+            'Pair Address': pair.get('pairAddress') or '',
+            'Token Address': base.get('address') or '',
+            'Dexscreener URL': pair.get('url') or '',
+            'Price USD': _safe_number(pair.get('priceUsd')),
+            'Momentum %': _safe_number((pair.get('priceChange') or {}).get(horizon), 0),
+            'Buys': buys,
+            'Sells': sells,
+            'Buy Pressure': flow,
+            'Buy RSI': 100 * buys / transaction_count if transaction_count else 50.0,
+            'Volume USD': volume,
+            'Volume Ratio': volume_ratio,
+            'Liquidity USD': _safe_number((pair.get('liquidity') or {}).get('usd'), 0),
+            'Market Cap': _safe_number(pair.get('marketCap')),
+            'FDV': _safe_number(pair.get('fdv')),
+        })
+    result = pd.DataFrame(rows)
+    if result.empty:
+        return result
+    result['Z-Score'] = _cross_section_z(result['Momentum %'])
+    result['Momentum Z'] = _cross_section_z(result['Momentum %'])
+    result['Flow Z-Score'] = _cross_section_z(result['Buy Pressure'])
+    result['Signal Score'] = (
+        -result['Z-Score']
+        + np.log1p(result['Volume Ratio'].clip(lower=0))
+        + result['Flow Z-Score']
+    )
+    result['Trend'] = np.where(result['Momentum %'] >= 0, 'Bullish', 'Bearish')
+    result['Alert'] = np.select(
+        [
+            (result['Z-Score'] >= 1) & (result['Momentum Z'] >= 1),
+            (result['Z-Score'] <= -1) & (result['Momentum Z'] <= -1),
+        ],
+        ['Positive aligned', 'Negative aligned'],
+        default='None',
+    )
+    return result.sort_values('Signal Score', ascending=False).reset_index(drop=True)
+
+
+def store_dexscreener_snapshot(overview, horizon):
+    """Persist at most one snapshot per pair/horizon/minute for rolling history."""
+    if overview is None or overview.empty:
+        return
+    timestamp = pd.Timestamp.now(tz='UTC').floor('min')
+    snapshot = overview[[
+        'Asset', 'Name', 'Chain', 'DEX', 'Pair Address', 'Token Address',
+        'Price USD', 'Momentum %', 'Buy Pressure', 'Volume USD',
+        'Liquidity USD',
+    ]].copy()
+    snapshot.insert(0, 'Timestamp', timestamp.isoformat())
+    snapshot['Horizon'] = horizon
+    if os.path.exists(DEXSCREENER_HISTORY_PATH):
+        try:
+            history = pd.read_csv(DEXSCREENER_HISTORY_PATH)
+        except Exception:
+            history = pd.DataFrame()
+        history = pd.concat([history, snapshot], ignore_index=True)
+    else:
+        history = snapshot
+    history = history.drop_duplicates(
+        subset=['Timestamp', 'Chain', 'Pair Address', 'Horizon'], keep='last'
+    ).tail(100000)
+    history.to_csv(DEXSCREENER_HISTORY_PATH, index=False)
+
+
+def load_dexscreener_component_history(chain, pair_address, horizon):
+    if not os.path.exists(DEXSCREENER_HISTORY_PATH):
+        return pd.DataFrame()
+    try:
+        history = pd.read_csv(DEXSCREENER_HISTORY_PATH)
+    except Exception:
+        return pd.DataFrame()
+    required = {'Timestamp', 'Chain', 'Pair Address', 'Horizon'}
+    if not required.issubset(history.columns):
+        return pd.DataFrame()
+    history = history[
+        (history['Chain'] == chain)
+        & (history['Pair Address'] == pair_address)
+        & (history['Horizon'] == horizon)
+    ].copy()
+    if history.empty:
+        return history
+    history['Timestamp'] = pd.to_datetime(history['Timestamp'], utc=True, errors='coerce')
+    history = history.dropna(subset=['Timestamp']).sort_values('Timestamp').set_index('Timestamp')
+    for column in ['Price USD', 'Momentum %', 'Buy Pressure', 'Volume USD', 'Liquidity USD']:
+        history[column] = pd.to_numeric(history[column], errors='coerce')
+
+    def rolling_z(values, window=50):
+        minimum = min(10, max(3, len(values)))
+        mean = values.rolling(window, min_periods=minimum).mean()
+        std = values.rolling(window, min_periods=minimum).std()
+        return (values - mean) / std.replace(0, np.nan)
+
+    returns = history['Price USD'].pct_change()
+    price_mid = history['Price USD'].rolling(20, min_periods=3).mean()
+    price_std = history['Price USD'].rolling(20, min_periods=3).std()
+    price_position = (history['Price USD'] - price_mid) / price_std.replace(0, np.nan)
+    realized_volatility = returns.rolling(14, min_periods=3).std()
+    history['Momentum Z'] = rolling_z(history['Momentum %'])
+    history['Flow Z'] = rolling_z(history['Buy Pressure'])
+    history['Volatility Z'] = rolling_z(realized_volatility)
+    history['Trend Z'] = rolling_z(price_position)
+    return history
+
+
 def main():
     st.title("Quantitative Scalping Dashboard (1h) 📈")
 
@@ -2820,7 +3024,7 @@ def main():
     polygon_api_key = st.sidebar.text_input("Polygon.io API Key", type="password")
 
     # Tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
         "🔥 Derivatives Trend Scan",
         "🛠️ Backtest Engine",
         "🏛️ US Indices",
@@ -2829,6 +3033,7 @@ def main():
         "🆕 Derivative Crypto",
         "🧪 Index & Gold Z Backtest",
         "📉 NAS100 VIX Alert Backtest",
+        "Meme Coins (Dexscreener)",
     ])
 
     if False:  # Removed: Market Overview
@@ -6034,6 +6239,327 @@ Each component is standardized across the displayed price bands before the weigh
                 )
         elif st.session_state.get('nas_vix_backtest_config') is not None:
             st.info("The settings changed. Run the backtest again to refresh the results.")
+
+    with tab9:
+        st.subheader("Dexscreener Meme-Coin Quant Analysis")
+        st.write(
+            "Applies the US Indices overview structure to decentralized-exchange pairs: "
+            "breadth, momentum, transaction flow, relative volume, aligned Z-score alerts, "
+            "and a composite signal score."
+        )
+        st.info(
+            "Dexscreener's documented API supplies live multi-window pair statistics, not "
+            "historical OHLCV candles. Live Z-scores below compare coins in the current basket. "
+            "The Historical Component Analysis is kept separate and uses snapshots stored by "
+            "this dashboard each time the tab refreshes."
+        )
+
+        dex_control_1, dex_control_2, dex_control_3, dex_control_4 = st.columns([1.2, 2, 1, 1])
+        with dex_control_1:
+            dex_discovery = st.selectbox(
+                "Coin source", ['Top boosted', 'Search'], key='dex_meme_discovery'
+            )
+        with dex_control_2:
+            dex_query = st.text_input(
+                "Meme name, symbol, or contract",
+                value='meme', disabled=dex_discovery != 'Search', key='dex_meme_query',
+            )
+        with dex_control_3:
+            dex_horizon = st.selectbox(
+                "Analysis window", ['m5', 'h1', 'h6', 'h24'], index=1,
+                key='dex_meme_horizon',
+            )
+        with dex_control_4:
+            dex_limit = st.selectbox(
+                "Maximum pairs", [10, 15, 20, 30], index=2, key='dex_meme_limit'
+            )
+
+        if dex_discovery == 'Top boosted':
+            st.caption(
+                "Top boosted is a discovery feed and may contain non-meme tokens or paid "
+                "promotion. Confirm the contract, liquidity, and token identity before using it."
+            )
+        dex_refresh_col, dex_status_col = st.columns([1, 3])
+        with dex_refresh_col:
+            dex_refresh = st.button(
+                "Refresh Meme-Coin Tab",
+                key='refresh_dex_meme',
+                type='primary',
+                width='stretch',
+            )
+        with dex_status_col:
+            last_dex_refresh = st.session_state.get('dex_meme_last_refresh')
+            if last_dex_refresh:
+                st.caption(f"Last refreshed: {last_dex_refresh} UTC")
+            else:
+                st.caption("Press refresh to load the latest Dexscreener data.")
+        if dex_refresh:
+            fetch_dexscreener_pairs.clear()
+
+        try:
+            with st.spinner("Loading Dexscreener pairs and calculating factors..."):
+                dex_pairs = fetch_dexscreener_pairs(
+                    dex_discovery, dex_query, int(dex_limit)
+                )
+                dex_overview = build_dexscreener_overview(dex_pairs, dex_horizon)
+                store_dexscreener_snapshot(dex_overview, dex_horizon)
+                if dex_refresh:
+                    st.session_state['dex_meme_last_refresh'] = (
+                        pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M:%S')
+                    )
+                    st.success("Meme-coin data refreshed from Dexscreener.")
+        except Exception as exc:
+            dex_overview = pd.DataFrame()
+            st.error(f"Dexscreener data could not be loaded: {exc}")
+
+        if not dex_overview.empty:
+            advancing = int((dex_overview['Momentum %'] > 0).sum())
+            declining = int((dex_overview['Momentum %'] < 0).sum())
+            breadth_ratio = advancing / max(declining, 1)
+            positive_alerts = int((dex_overview['Alert'] == 'Positive aligned').sum())
+            negative_alerts = int((dex_overview['Alert'] == 'Negative aligned').sum())
+            total_liquidity = dex_overview['Liquidity USD'].sum()
+            dex_metrics = st.columns(6)
+            dex_metrics[0].metric("Pairs", len(dex_overview))
+            dex_metrics[1].metric("Advancing / Declining", f"{advancing} / {declining}")
+            dex_metrics[2].metric("Breadth Ratio", f"{breadth_ratio:.2f}")
+            dex_metrics[3].metric("Positive Alerts", positive_alerts)
+            dex_metrics[4].metric("Negative Alerts", negative_alerts)
+            dex_metrics[5].metric("Basket Liquidity", f"${total_liquidity:,.0f}")
+
+            st.markdown("#### Meme-Coin Overview and Z-Score Alerts")
+            overview_columns = [
+                'Asset', 'Name', 'Chain', 'DEX', 'Price USD', 'Momentum %',
+                'Buy RSI', 'Trend', 'Signal Score', 'Volume Ratio',
+                'Flow Z-Score', 'Z-Score', 'Liquidity USD', 'Market Cap', 'Alert',
+                'Dexscreener URL',
+            ]
+            dex_styler = dex_overview[overview_columns].style.format({
+                'Price USD': '${:,.10g}',
+                'Momentum %': '{:+.2f}%',
+                'Buy RSI': '{:.1f}',
+                'Signal Score': '{:+.2f}',
+                'Volume Ratio': '{:.2f}x',
+                'Flow Z-Score': '{:+.2f}',
+                'Z-Score': '{:+.2f}',
+                'Liquidity USD': '${:,.0f}',
+                'Market Cap': '${:,.0f}',
+            }).map(
+                color_metrics,
+                subset=['Momentum %', 'Signal Score', 'Flow Z-Score', 'Z-Score'],
+            )
+            st.dataframe(
+                dex_styler,
+                width='stretch',
+                hide_index=True,
+                column_config={
+                    'Dexscreener URL': st.column_config.LinkColumn(
+                        'Dexscreener', display_text='Open pair'
+                    )
+                },
+            )
+            st.caption(
+                "Z-Score and Momentum Z are the cross-sectional Z-score of the selected-window "
+                "price change. Flow Z standardizes buy-versus-sell transaction pressure. "
+                "An alert requires Z-Score and Momentum Z to align at +1 or -1."
+            )
+
+            st.markdown("#### Historical Z-Score Component Analysis")
+            asset_options = {
+                f"{row['Asset']} | {row['Chain']} | {str(row['Pair Address'])[:10]}...": (
+                    row['Chain'], row['Pair Address'], row['Dexscreener URL']
+                )
+                for _, row in dex_overview.iterrows()
+            }
+            selected_asset_label = st.selectbox(
+                "Select a specific pair", list(asset_options), key='dex_history_asset'
+            )
+            selected_chain, selected_pair, selected_url = asset_options[selected_asset_label]
+            if selected_url:
+                st.link_button("Open selected pair on Dexscreener", selected_url)
+            dex_history = load_dexscreener_component_history(
+                selected_chain, selected_pair, dex_horizon
+            )
+            if len(dex_history) < 10:
+                st.warning(
+                    f"{len(dex_history)} stored snapshot(s) are available for this pair/window. "
+                    "At least 10 observations are needed to display rolling component Z-scores; "
+                    "50 observations provide the full lookback. Use Refresh over time to build history."
+                )
+                st.markdown("##### Demand and Supply Analysis — Highest Drop")
+                st.info(
+                    f"Waiting for historical observations: {len(dex_history)}/10 stored "
+                    f"snapshots for this exact pair and {dex_horizon} window."
+                )
+                st.markdown("##### Demand and Supply Analysis — Highest Rise")
+                st.info(
+                    f"Waiting for historical observations: {len(dex_history)}/10 stored "
+                    f"snapshots for this exact pair and {dex_horizon} window."
+                )
+                st.caption(
+                    "Each click of Refresh Meme-Coin Tab stores one observation per minute. "
+                    "Changing the selected pair or analysis window uses a different history."
+                )
+            else:
+                valid_components = dex_history[[
+                    'Momentum Z', 'Flow Z', 'Volatility Z', 'Trend Z'
+                ]].dropna(how='all')
+                if valid_components.empty:
+                    st.info("The stored observations do not yet have enough price variation.")
+                else:
+                    component_chart = go.Figure()
+                    for component in valid_components.columns:
+                        component_chart.add_trace(go.Scatter(
+                            x=valid_components.index,
+                            y=valid_components[component],
+                            mode='lines',
+                            name=component,
+                        ))
+                    component_chart.add_hline(y=1, line_dash='dash', line_color='green')
+                    component_chart.add_hline(y=-1, line_dash='dash', line_color='red')
+                    component_chart.update_layout(
+                        title=f"{selected_asset_label} — stored component history",
+                        xaxis_title='Snapshot time (UTC)',
+                        yaxis_title='Z-score',
+                        template='plotly_dark',
+                    )
+                    st.plotly_chart(component_chart, width='stretch')
+
+                    latest_components = valid_components.iloc[-1].dropna()
+                    if not latest_components.empty:
+                        highest_component = latest_components.idxmax()
+                        lowest_component = latest_components.idxmin()
+                        component_metrics = st.columns(4)
+                        component_metrics[0].metric(
+                            "Highest Component", highest_component,
+                            f"{latest_components[highest_component]:+.2f} Z",
+                        )
+                        component_metrics[1].metric(
+                            "Lowest Component", lowest_component,
+                            f"{latest_components[lowest_component]:+.2f} Z",
+                        )
+                        component_metrics[2].metric(
+                            "Component Spread",
+                            f"{latest_components.max() - latest_components.min():.2f}",
+                        )
+                        component_metrics[3].metric(
+                            "Stored Observations", len(dex_history)
+                        )
+
+                    component_moves = valid_components.diff()
+                    stacked_moves = component_moves.stack().dropna()
+                    if not stacked_moves.empty:
+                        drop_event = stacked_moves.idxmin()
+                        rise_event = stacked_moves.idxmax()
+                        price_change = dex_history['Price USD'].pct_change() * 100
+
+                        def analyze_dex_event(event_name, event_key):
+                            event_time, event_component = event_key
+                            flow_change = component_moves.at[event_time, 'Flow Z']
+                            momentum_change = component_moves.at[event_time, 'Momentum Z']
+                            volatility_change = component_moves.at[event_time, 'Volatility Z']
+                            trend_change = component_moves.at[event_time, 'Trend Z']
+                            event_price_change = price_change.get(event_time, np.nan)
+                            volatility_z = valid_components.at[event_time, 'Volatility Z']
+
+                            # Direction score: 60% transaction flow, 25% momentum and
+                            # 15% volatility expansion in the direction of price movement.
+                            demand_score = (
+                                (60 if flow_change > 0 else 0)
+                                + (25 if momentum_change > 0 else 0)
+                                + (15 if volatility_change > 0 and event_price_change > 0 else 0)
+                            )
+                            supply_score = (
+                                (60 if flow_change < 0 else 0)
+                                + (25 if momentum_change < 0 else 0)
+                                + (15 if volatility_change > 0 and event_price_change < 0 else 0)
+                            )
+                            if demand_score >= 60 and demand_score > supply_score:
+                                strength = 'Strong' if demand_score >= 85 else 'Moderate'
+                                verdict = f'{strength} demand'
+                            elif supply_score >= 60 and supply_score > demand_score:
+                                strength = 'Strong' if supply_score >= 85 else 'Moderate'
+                                verdict = f'{strength} supply'
+                            else:
+                                verdict = 'Mixed / unconfirmed'
+
+                            if volatility_z >= 1:
+                                volatility_regime = 'Expansion'
+                            elif volatility_z <= -1:
+                                volatility_regime = 'Compression'
+                            else:
+                                volatility_regime = 'Normal'
+                            return {
+                                'Event': event_name,
+                                'Time (UTC)': event_time,
+                                'Dropped/Rose Component': event_component,
+                                'Event Z Change': component_moves.at[event_time, event_component],
+                                'Price Change %': event_price_change,
+                                'Flow Z Change': flow_change,
+                                'Momentum Z Change': momentum_change,
+                                'Trend Z Change': trend_change,
+                                'Volatility Z Change': volatility_change,
+                                'Volatility Regime': volatility_regime,
+                                'Demand Score': demand_score,
+                                'Supply Score': supply_score,
+                                'Demand/Supply Verdict': verdict,
+                            }
+
+                        drop_analysis = analyze_dex_event(
+                            'Highest component drop', drop_event
+                        )
+                        rise_analysis = analyze_dex_event(
+                            'Highest component rise', rise_event
+                        )
+
+                        st.markdown("##### Demand and Supply Analysis — Highest Drop")
+                        st.dataframe(
+                            pd.DataFrame([drop_analysis]).style.format({
+                                'Event Z Change': '{:+.2f}',
+                                'Price Change %': '{:+.3f}%',
+                                'Flow Z Change': '{:+.2f}',
+                                'Momentum Z Change': '{:+.2f}',
+                                'Trend Z Change': '{:+.2f}',
+                                'Volatility Z Change': '{:+.2f}',
+                                'Demand Score': '{:.0f}/100',
+                                'Supply Score': '{:.0f}/100',
+                            }).map(
+                                color_metrics,
+                                subset=['Event Z Change', 'Price Change %', 'Flow Z Change',
+                                        'Momentum Z Change', 'Trend Z Change'],
+                            ),
+                            width='stretch', hide_index=True,
+                        )
+
+                        st.markdown("##### Demand and Supply Analysis — Highest Rise")
+                        st.dataframe(
+                            pd.DataFrame([rise_analysis]).style.format({
+                                'Event Z Change': '{:+.2f}',
+                                'Price Change %': '{:+.3f}%',
+                                'Flow Z Change': '{:+.2f}',
+                                'Momentum Z Change': '{:+.2f}',
+                                'Trend Z Change': '{:+.2f}',
+                                'Volatility Z Change': '{:+.2f}',
+                                'Demand Score': '{:.0f}/100',
+                                'Supply Score': '{:.0f}/100',
+                            }).map(
+                                color_metrics,
+                                subset=['Event Z Change', 'Price Change %', 'Flow Z Change',
+                                        'Momentum Z Change', 'Trend Z Change'],
+                            ),
+                            width='stretch', hide_index=True,
+                        )
+                        st.caption(
+                            "Scoring: 60% Flow Z direction + 25% Momentum Z direction + "
+                            "15% volatility expansion aligned with the stored price move. A drop "
+                            "is not automatically supply and a rise is not automatically demand; "
+                            "the verdict depends on the factors at that exact event time."
+                        )
+        else:
+            st.warning(
+                "No eligible Dexscreener pairs were returned. Try Search with a token symbol "
+                "or contract address."
+            )
 
     if False:  # Removed: Index Spike Alert
         st.subheader("📢 Index Spike Alert Engine")
