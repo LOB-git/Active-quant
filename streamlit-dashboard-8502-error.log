@@ -460,3 +460,381 @@ $DIA: possibly delisted; no price data found  (period=1d)
 
 1 Failed download:
 ['DIA']: possibly delisted; no price data found  (period=1d)
+Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+$QQQ: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['QQQ']: possibly delisted; no price data found  (period=1d)
+$QQQ: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['QQQ']: possibly delisted; no price data found  (period=1d)
+Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$SPY: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['SPY']: possibly delisted; no price data found  (period=1d)
+$DIA: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['DIA']: possibly delisted; no price data found  (period=1d)
+$BTC-USD: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['BTC-USD']: possibly delisted; no price data found  (period=1d)
+$BTC-USD: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['BTC-USD']: possibly delisted; no price data found  (period=1d)
+$QQQ: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['QQQ']: possibly delisted; no price data found  (period=1d)
+$QQQ: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['QQQ']: possibly delisted; no price data found  (period=1d)
+$SPY: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['SPY']: possibly delisted; no price data found  (period=1d)
+$SPY: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['SPY']: possibly delisted; no price data found  (period=1d)
+$SPY: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['SPY']: possibly delisted; no price data found  (period=1d)
+$QQQ: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['QQQ']: possibly delisted; no price data found  (period=1d)
+$QQQ: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['QQQ']: possibly delisted; no price data found  (period=1d)
+$QQQ: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['QQQ']: possibly delisted; no price data found  (period=1d)
+$DIA: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['DIA']: possibly delisted; no price data found  (period=1d)
+$QQQ: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['QQQ']: possibly delisted; no price data found  (period=1d)
+$QQQ: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['QQQ']: possibly delisted; no price data found  (period=1d)
+$QQQ: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['QQQ']: possibly delisted; no price data found  (period=1d)
+$SPY: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['SPY']: possibly delisted; no price data found  (period=1d)
+$SPY: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['SPY']: possibly delisted; no price data found  (period=1d)
+$SPY: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['SPY']: possibly delisted; no price data found  (period=1d)
+$SPY: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['SPY']: possibly delisted; no price data found  (period=1d)
+$QQQ: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['QQQ']: possibly delisted; no price data found  (period=1d)
+$QQQ: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['QQQ']: possibly delisted; no price data found  (period=1d)
+$QQQ: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['QQQ']: possibly delisted; no price data found  (period=1d)
+$QQQ: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['QQQ']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$DIA: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['DIA']: possibly delisted; no price data found  (period=1d)
+$DIA: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['DIA']: possibly delisted; no price data found  (period=1d)
+$DIA: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['DIA']: possibly delisted; no price data found  (period=1d)
+$DIA: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['DIA']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$BTC-USD: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['BTC-USD']: possibly delisted; no price data found  (period=1d)
+$BTC-USD: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['BTC-USD']: possibly delisted; no price data found  (period=1d)
+$BTC-USD: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['BTC-USD']: possibly delisted; no price data found  (period=1d)
+$BTC-USD: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['BTC-USD']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=60d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=60d)
+$NQ=F: possibly delisted; no price data found  (period=60d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$NQ=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['NQ=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+$YM=F: possibly delisted; no price data found  (period=1d)
+
+1 Failed download:
+['YM=F']: possibly delisted; no price data found  (period=1d)
+Fatal Python error: _PySemaphore_Wakeup: parking_lot: ReleaseSemaphore failed
+Python runtime state: initialized
+
+Thread 0x0000a110 [AnyIO worker thread] (most recent call first):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 369 in wait
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\queue.py", line 199 in get
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\anyio\_backends\_asyncio.py", line 1018 in run
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1082 in _bootstrap_inner
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1044 in _bootstrap
+
+Thread 0x00005990 [ThreadPoolExecutor-0_3] (most recent call first):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\concurrent\futures\thread.py", line 116 in _worker
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1024 in run
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1082 in _bootstrap_inner
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1044 in _bootstrap
+
+Thread 0x000049cc [Thread-1] (most recent call first):
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\watchdog\observers\api.py", line 385 in dispatch_events
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\watchdog\observers\api.py", line 213 in run
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1082 in _bootstrap_inner
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1044 in _bootstrap
+
+Thread 0x00001ad8 [ThreadPoolExecutor-0_2] (most recent call first):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\concurrent\futures\thread.py", line 116 in _worker
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1024 in run
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1082 in _bootstrap_inner
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1044 in _bootstrap
+
+Thread 0x0000256c [ThreadPoolExecutor-0_1] (most recent call first):
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\watcher\polling_path_watcher.py", line 90 in task
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\concurrent\futures\thread.py", line 73 in run
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\concurrent\futures\thread.py", line 86 in run
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\concurrent\futures\thread.py", line 119 in _worker
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1024 in run
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1082 in _bootstrap_inner
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1044 in _bootstrap
+
+Thread 0x00000300 [ThreadPoolExecutor-0_0] (most recent call first):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\concurrent\futures\thread.py", line ??? in submit
+  <invalid frame>
+
+Thread 0x00001574 (most recent call first):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\threading.py", line 1133 in join
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\watchdog\observers\api.py", line 239 in _remove_emitter
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\watchdog\observers\api.py", line 365 in unschedule
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\watcher\event_based_path_watcher.py", line 280 in stop_watching_path
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\watcher\event_based_path_watcher.py", line 164 in close
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\watcher\local_sources_watcher.py", line 208 in close
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\runtime\app_session.py", line 251 in disconnect_file_watchers
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\runtime\websocket_session_manager.py", line 176 in disconnect_session
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\runtime\runtime.py", line 506 in disconnect_session
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\web\server\starlette\starlette_websocket.py", line 519 in _websocket_endpoint
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\starlette\routing.py", line 81 in app
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\starlette\_exception_handler.py", line 42 in wrapped_app
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\starlette\routing.py", line 83 in app
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\starlette\routing.py", line 350 in handle
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\starlette\routing.py", line 680 in app
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\starlette\routing.py", line 660 in __call__
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\starlette\_exception_handler.py", line 42 in wrapped_app
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\starlette\middleware\exceptions.py", line 63 in __call__
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\web\server\starlette\starlette_gzip_middleware.py", line 119 in __call__
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\web\server\starlette\starlette_gzip_middleware.py", line 144 in __call__
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\starlette\middleware\sessions.py", line 88 in __call__
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\web\server\starlette\starlette_path_security_middleware.py", line 145 in __call__
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\starlette\middleware\errors.py", line 151 in __call__
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\starlette\applications.py", line 90 in __call__
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 63 in __call__
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\uvicorn\protocols\websockets\websockets_sansio_impl.py", line 347 in run_asgi
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\asyncio\events.py", line 94 in _run
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\asyncio\base_events.py", line 2046 in _run_once
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\asyncio\base_events.py", line 677 in run_forever
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\asyncio\base_events.py", line 706 in run_until_complete
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\asyncio\runners.py", line 127 in run
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\asyncio\runners.py", line 204 in run
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\web\bootstrap.py", line 428 in run
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\web\cli.py", line 325 in _main_run
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\web\cli.py", line 251 in main_run
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\click\core.py", line 907 in invoke
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\click\core.py", line 1353 in invoke
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\click\core.py", line 1970 in invoke
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\click\core.py", line 1490 in main
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\click\core.py", line 1569 in __call__
+  File "C:\Users\Frank\quant pro wth pre market\.venv-1\Lib\site-packages\streamlit\__main__.py", line 20 in <module>
+  File "<frozen runpy>", line 88 in _run_code
+  File "<frozen runpy>", line 198 in _run_module_as_main

@@ -2868,9 +2868,8 @@ def load_dexscreener_component_history(chain, pair_address, horizon):
         history[column] = pd.to_numeric(history[column], errors='coerce')
 
     def rolling_z(values, window=50):
-        minimum = min(10, max(3, len(values)))
-        mean = values.rolling(window, min_periods=minimum).mean()
-        std = values.rolling(window, min_periods=minimum).std()
+        mean = values.rolling(window, min_periods=3).mean()
+        std = values.rolling(window, min_periods=3).std()
         return (values - mean) / std.replace(0, np.nan)
 
     returns = history['Price USD'].pct_change()
@@ -2883,6 +2882,205 @@ def load_dexscreener_component_history(chain, pair_address, horizon):
     history['Volatility Z'] = rolling_z(realized_volatility)
     history['Trend Z'] = rolling_z(price_position)
     return history
+
+
+def build_dexscreener_flow_event_analysis(overview, horizon):
+    """Return the largest historical Flow-Z rise and drop for every scanned pair."""
+    event_rows = []
+    coverage_rows = []
+    if overview is None or overview.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    for _, asset_row in overview.iterrows():
+        asset = asset_row['Asset']
+        chain = asset_row['Chain']
+        pair_address = asset_row['Pair Address']
+        history = load_dexscreener_component_history(chain, pair_address, horizon)
+        coverage_rows.append({
+            'Asset': asset,
+            'Chain': chain,
+            'Pair Address': pair_address,
+            'Stored Snapshots': len(history),
+            'Ready': len(history) >= 4,
+        })
+        if len(history) < 4:
+            continue
+
+        components = history[
+            ['Momentum Z', 'Flow Z', 'Volatility Z', 'Trend Z']
+        ].copy()
+        component_changes = components.diff()
+        flow_changes = component_changes['Flow Z'].dropna()
+        if flow_changes.empty:
+            continue
+
+        price_changes = history['Price USD'].pct_change() * 100
+        event_keys = []
+        if flow_changes.min() < 0:
+            event_keys.append(('Highest Flow Z Drop', flow_changes.idxmin()))
+        if flow_changes.max() > 0:
+            event_keys.append(('Highest Flow Z Rise', flow_changes.idxmax()))
+        for event_name, event_time in event_keys:
+            flow_change = component_changes.at[event_time, 'Flow Z']
+            momentum_change = component_changes.at[event_time, 'Momentum Z']
+            volatility_change = component_changes.at[event_time, 'Volatility Z']
+            trend_change = component_changes.at[event_time, 'Trend Z']
+            price_change = price_changes.get(event_time, np.nan)
+            volatility_z = components.at[event_time, 'Volatility Z']
+
+            demand_score = (
+                (60 if pd.notna(flow_change) and flow_change > 0 else 0)
+                + (25 if pd.notna(momentum_change) and momentum_change > 0 else 0)
+                + (15 if pd.notna(volatility_change) and volatility_change > 0
+                   and pd.notna(price_change) and price_change > 0 else 0)
+            )
+            supply_score = (
+                (60 if pd.notna(flow_change) and flow_change < 0 else 0)
+                + (25 if pd.notna(momentum_change) and momentum_change < 0 else 0)
+                + (15 if pd.notna(volatility_change) and volatility_change > 0
+                   and pd.notna(price_change) and price_change < 0 else 0)
+            )
+            if demand_score >= 60 and demand_score > supply_score:
+                verdict = 'Strong demand' if demand_score >= 85 else 'Moderate demand'
+            elif supply_score >= 60 and supply_score > demand_score:
+                verdict = 'Strong supply' if supply_score >= 85 else 'Moderate supply'
+            else:
+                verdict = 'Mixed / unconfirmed'
+
+            if pd.isna(volatility_z):
+                volatility_regime = 'Unavailable'
+            elif volatility_z >= 1:
+                volatility_regime = 'Expansion'
+            elif volatility_z <= -1:
+                volatility_regime = 'Compression'
+            else:
+                volatility_regime = 'Normal'
+
+            event_rows.append({
+                'Asset': asset,
+                'Chain': chain,
+                'Timeframe': horizon,
+                'Event': event_name,
+                'Event Time (Ghana)': event_time,
+                'Flow Z': components.at[event_time, 'Flow Z'],
+                'Flow Z Change': flow_change,
+                'Momentum Z Change': momentum_change,
+                'Trend Z Change': trend_change,
+                'Volatility Z Change': volatility_change,
+                'Price Change %': price_change,
+                'Volatility Regime': volatility_regime,
+                'Demand Score': demand_score,
+                'Supply Score': supply_score,
+                'Demand/Supply Verdict': verdict,
+                'History Confidence': (
+                    'Full lookback' if len(history) >= 50
+                    else 'Developing' if len(history) >= 10
+                    else 'Provisional'
+                ),
+                'Stored Snapshots': len(history),
+                'Pair Address': pair_address,
+            })
+    return pd.DataFrame(event_rows), pd.DataFrame(coverage_rows)
+
+
+def build_us_index_flow_event_analysis(symbol, data, timeframe):
+    """Calculate the strongest historical Flow-Z rise and drop for one index."""
+    if data is None or data.empty or len(data) < 52:
+        return []
+    history = data.copy().sort_index()
+    required = {'open', 'high', 'low', 'close', 'volume', 'momentum', 'atr14', 'z_score'}
+    if not required.issubset(history.columns):
+        return []
+
+    history['is_up'] = history['close'] >= history['open']
+    inflow = pd.to_numeric(history['volume'], errors='coerce').where(history['is_up'], 0)
+    outflow = pd.to_numeric(history['volume'], errors='coerce').where(~history['is_up'], 0)
+    rolling_inflow = inflow.rolling(20).sum()
+    rolling_outflow = outflow.rolling(20).sum()
+    flow_total = (rolling_inflow + rolling_outflow).replace(0, np.nan)
+    money_flow_signal = (rolling_inflow - rolling_outflow) / flow_total
+
+    def rolling_z(series, window=50):
+        numeric = pd.to_numeric(series, errors='coerce')
+        mean = numeric.rolling(window).mean()
+        std = numeric.rolling(window).std().replace(0, np.nan)
+        return (numeric - mean) / std
+
+    components = pd.DataFrame(index=history.index)
+    components['Momentum Z'] = rolling_z(history['momentum'])
+    components['Flow Z'] = rolling_z(money_flow_signal)
+    components['Volatility Z'] = rolling_z(history['atr14'])
+    components['Trend Z'] = rolling_z(history['z_score'])
+    changes = components.diff()
+    flow_changes = changes['Flow Z'].dropna()
+    if flow_changes.empty:
+        return []
+
+    event_keys = []
+    if flow_changes.min() < 0:
+        event_keys.append(('Highest Flow Z Drop', flow_changes.idxmin()))
+    if flow_changes.max() > 0:
+        event_keys.append(('Highest Flow Z Rise', flow_changes.idxmax()))
+
+    results = []
+    for event_name, event_time in event_keys:
+        position = history.index.get_indexer([event_time])[0]
+        if position <= 0:
+            continue
+        current_bar = history.iloc[position]
+        previous_close = float(history['close'].iloc[position - 1])
+        price_change = float(current_bar['close']) - previous_close
+        flow_change = float(changes.at[event_time, 'Flow Z'])
+        momentum_change = float(changes.at[event_time, 'Momentum Z'])
+        volatility_change = float(changes.at[event_time, 'Volatility Z'])
+        trend_change = float(changes.at[event_time, 'Trend Z'])
+
+        flow_contribution = 0.60 * np.tanh(flow_change)
+        momentum_contribution = 0.25 * np.tanh(momentum_change)
+        volatility_direction = (
+            np.sign(price_change) * np.tanh(abs(volatility_change))
+            if volatility_change > 0 else 0.0
+        )
+        volatility_contribution = 0.15 * volatility_direction
+        direction_score = 100 * (
+            flow_contribution + momentum_contribution + volatility_contribution
+        )
+        if direction_score >= 10:
+            classification = 'Candidate Demand Zone'
+        elif direction_score <= -10:
+            classification = 'Candidate Supply Zone'
+        else:
+            classification = 'Unresolved / Balanced Zone'
+
+        event_timestamp = pd.Timestamp(event_time)
+        if event_timestamp.tzinfo is None:
+            ghana_time = event_timestamp.tz_localize('UTC')
+        else:
+            ghana_time = event_timestamp.tz_convert('UTC')
+        results.append({
+            'Symbol': symbol,
+            'Timeframe': timeframe,
+            'Event': event_name,
+            'Event Time (Ghana)': ghana_time,
+            'Flow Z': float(components.at[event_time, 'Flow Z']),
+            'Flow Z Change': flow_change,
+            'Momentum Z Change': momentum_change,
+            'Trend Z Change': trend_change,
+            'Volatility Z Change': volatility_change,
+            'Price Change': price_change,
+            'Zone Bottom': float(current_bar['low']),
+            'Zone Top': float(current_bar['high']),
+            'Close': float(current_bar['close']),
+            'Volatility Regime': (
+                'Expansion' if volatility_change > 0
+                else 'Compression' if volatility_change < 0
+                else 'Unchanged'
+            ),
+            'Direction Score': direction_score,
+            'Demand/Supply Classification': classification,
+            'Historical Candles': len(history),
+        })
+    return results
 
 
 def main():
@@ -4135,7 +4333,12 @@ def main():
             # Retain the fetched history so changing the date redraws the analysis without another API call.
             if st.session_state.get('historical_z_chart_config') == z_chart_config:
                 df_z_hist = st.session_state.get('historical_z_chart_data').copy()
-                available_dates = sorted(np.unique(pd.DatetimeIndex(df_z_hist.index).date))
+                historical_index = pd.DatetimeIndex(df_z_hist.index)
+                if historical_index.tz is None:
+                    ghana_history_index = historical_index.tz_localize('UTC')
+                else:
+                    ghana_history_index = historical_index.tz_convert('UTC')
+                available_dates = sorted(np.unique(ghana_history_index.date))
 
                 if available_dates:
                     date_key = f"z_chart_analysis_date_{z_chart_asset}_{z_chart_timeframe}"
@@ -4160,12 +4363,19 @@ def main():
                     def rolling_zscore(series, window=50):
                         return (series - series.rolling(window).mean()) / series.rolling(window).std()
 
-                    z_df = pd.DataFrame(index=df_z_hist.index)
-                    z_df['Momentum (z)'] = rolling_zscore(df_z_hist['momentum'])
-                    z_df['Flow (z)'] = rolling_zscore(df_z_hist['money_flow_signal'])
-                    z_df['Volatility (z)'] = rolling_zscore(df_z_hist['atr14'])
-                    z_df['Trend (z)'] = rolling_zscore(df_z_hist['z_score'])
-                    z_df = z_df.loc[pd.DatetimeIndex(z_df.index).date == selected_z_date]
+                    full_z_df = pd.DataFrame(index=df_z_hist.index)
+                    full_z_df['Momentum (z)'] = rolling_zscore(df_z_hist['momentum'])
+                    full_z_df['Flow (z)'] = rolling_zscore(df_z_hist['money_flow_signal'])
+                    full_z_df['Volatility (z)'] = rolling_zscore(df_z_hist['atr14'])
+                    full_z_df['Trend (z)'] = rolling_zscore(df_z_hist['z_score'])
+                    full_component_changes = full_z_df.diff()
+                    selected_ghana_mask = np.asarray(
+                        ghana_history_index.date
+                    ) == selected_z_date
+                    z_df = full_z_df.loc[selected_ghana_mask]
+                    selected_component_changes = full_component_changes.loc[
+                        selected_ghana_mask
+                    ]
 
                     if z_df.empty:
                         st.info("No historical Z-score data is available for the selected date.")
@@ -4179,6 +4389,152 @@ def main():
                                             yaxis_title='Z-Score (Standard Deviations from Mean)',
                                             template='plotly_dark')
                         st.plotly_chart(fig_z, width='stretch')
+
+                        # All Flow Z rise/drop alerts during the selected Ghana day.
+                        selected_session_alerts = []
+                        selected_flow_changes = selected_component_changes[
+                            'Flow (z)'
+                        ].dropna()
+                        selected_event_keys = [
+                            (
+                                'Flow Z Rise Alert'
+                                if flow_change_value > 0
+                                else 'Flow Z Drop Alert',
+                                flow_change_time,
+                            )
+                            for flow_change_time, flow_change_value
+                            in selected_flow_changes.items()
+                            if flow_change_value != 0
+                        ]
+
+                        for alert_name, alert_time in selected_event_keys:
+                            flow_change_alert = float(
+                                selected_component_changes.at[alert_time, 'Flow (z)']
+                            )
+                            momentum_change_alert = float(
+                                selected_component_changes.at[alert_time, 'Momentum (z)']
+                            )
+                            volatility_change_alert = float(
+                                selected_component_changes.at[alert_time, 'Volatility (z)']
+                            )
+                            trend_change_alert = float(
+                                selected_component_changes.at[alert_time, 'Trend (z)']
+                            )
+                            alert_price_row = df_z_hist.loc[alert_time]
+                            if isinstance(alert_price_row, pd.DataFrame):
+                                alert_price_row = alert_price_row.iloc[-1]
+                            alert_position = df_z_hist.index.get_indexer([alert_time])[0]
+                            alert_previous_close = (
+                                float(df_z_hist['close'].iloc[alert_position - 1])
+                                if alert_position > 0
+                                else float(alert_price_row['open'])
+                            )
+                            alert_price_change = (
+                                float(alert_price_row['close']) - alert_previous_close
+                            )
+                            alert_flow_contribution = (
+                                0.60 * np.tanh(flow_change_alert)
+                            )
+                            alert_momentum_contribution = (
+                                0.25 * np.tanh(momentum_change_alert)
+                            )
+                            alert_volatility_direction = (
+                                np.sign(alert_price_change)
+                                * np.tanh(abs(volatility_change_alert))
+                                if volatility_change_alert > 0 else 0.0
+                            )
+                            alert_volatility_contribution = (
+                                0.15 * alert_volatility_direction
+                            )
+                            alert_direction_score = 100 * (
+                                alert_flow_contribution
+                                + alert_momentum_contribution
+                                + alert_volatility_contribution
+                            )
+                            if alert_direction_score >= 10:
+                                alert_classification = 'Demand Alert'
+                            elif alert_direction_score <= -10:
+                                alert_classification = 'Supply Alert'
+                            else:
+                                alert_classification = 'Unresolved Alert'
+                            alert_timestamp = pd.Timestamp(alert_time)
+                            if alert_timestamp.tzinfo is None:
+                                alert_ghana_time = alert_timestamp.tz_localize('UTC')
+                            else:
+                                alert_ghana_time = alert_timestamp.tz_convert('UTC')
+                            selected_session_alerts.append({
+                                'Asset': z_chart_asset,
+                                'Date': selected_z_date,
+                                'Timeframe': z_chart_timeframe,
+                                'Alert': alert_name,
+                                'Ghana Time': alert_ghana_time,
+                                'Flow Z': float(z_df.at[alert_time, 'Flow (z)']),
+                                'Flow Z Change': flow_change_alert,
+                                'Momentum Z Change': momentum_change_alert,
+                                'Trend Z Change': trend_change_alert,
+                                'Volatility Z Change': volatility_change_alert,
+                                'Price Change': alert_price_change,
+                                'Zone Bottom': float(alert_price_row['low']),
+                                'Zone Top': float(alert_price_row['high']),
+                                'Direction Score': alert_direction_score,
+                                'Demand/Supply Alert': alert_classification,
+                            })
+
+                        st.subheader(
+                            "All Historical Demand & Supply Rise/Drop Alerts — Ghana Day"
+                        )
+                        st.caption(
+                            f"All Flow Z rise and drop events for {z_chart_asset} during the "
+                            f"Ghana calendar day {selected_z_date:%Y-%m-%d}, using "
+                            f"{z_chart_timeframe} candles. The first event after Ghana midnight "
+                            "is compared with the preceding candle."
+                        )
+                        if selected_session_alerts:
+                            selected_alerts_df = pd.DataFrame(selected_session_alerts)
+                            alert_counts = selected_alerts_df['Alert'].value_counts()
+                            alert_count_columns = st.columns(3)
+                            alert_count_columns[0].metric(
+                                "Total Alerts", len(selected_alerts_df)
+                            )
+                            alert_count_columns[1].metric(
+                                "Rise Alerts",
+                                int(alert_counts.get('Flow Z Rise Alert', 0)),
+                            )
+                            alert_count_columns[2].metric(
+                                "Drop Alerts",
+                                int(alert_counts.get('Flow Z Drop Alert', 0)),
+                            )
+                            selected_alerts_df = selected_alerts_df.sort_values(
+                                'Ghana Time'
+                            )
+                            st.dataframe(
+                                selected_alerts_df.style.format({
+                                    'Flow Z': '{:+.2f}',
+                                    'Flow Z Change': '{:+.2f}',
+                                    'Momentum Z Change': '{:+.2f}',
+                                    'Trend Z Change': '{:+.2f}',
+                                    'Volatility Z Change': '{:+.2f}',
+                                    'Price Change': '{:+,.2f}',
+                                    'Zone Bottom': '{:,.2f}',
+                                    'Zone Top': '{:,.2f}',
+                                    'Direction Score': '{:+.1f}',
+                                }).map(
+                                    color_metrics,
+                                    subset=[
+                                        'Flow Z', 'Flow Z Change',
+                                        'Momentum Z Change', 'Trend Z Change',
+                                        'Volatility Z Change', 'Price Change',
+                                        'Direction Score',
+                                    ],
+                                ),
+                                width='stretch',
+                                hide_index=True,
+                            )
+                        else:
+                            st.info(
+                                "No valid Flow Z rise or drop alert exists for this asset "
+                                "during the selected date/session."
+                            )
 
                         drop_events = []
                         for col in z_df.columns:
@@ -6364,6 +6720,85 @@ Each component is standardized across the displayed price bands before the weigh
                 "An alert requires Z-Score and Momentum Z to align at +1 or -1."
             )
 
+            st.markdown(
+                "#### Historical Demand & Supply Analysis — Highest Flow Z Rise and Drop"
+            )
+            st.caption(
+                f"Every asset in the latest scan is analyzed from its stored {dex_horizon} "
+                "snapshots. Event times are shown in Ghana time (GMT/UTC)."
+            )
+            flow_event_analysis, flow_event_coverage = (
+                build_dexscreener_flow_event_analysis(dex_overview, dex_horizon)
+            )
+            ready_assets = (
+                int(flow_event_coverage['Ready'].sum())
+                if not flow_event_coverage.empty else 0
+            )
+            flow_history_metrics = st.columns(3)
+            flow_history_metrics[0].metric("Scanned Assets", len(dex_overview))
+            flow_history_metrics[1].metric("Assets Ready", ready_assets)
+            flow_history_metrics[2].metric("Selected Timeframe", dex_horizon)
+
+            if flow_event_analysis.empty:
+                minimum_snapshots = (
+                    int(flow_event_coverage['Stored Snapshots'].min())
+                    if not flow_event_coverage.empty else 0
+                )
+                maximum_snapshots = (
+                    int(flow_event_coverage['Stored Snapshots'].max())
+                    if not flow_event_coverage.empty else 0
+                )
+                st.info(
+                    "No asset has enough stored observations for a historical Flow Z change "
+                    f"yet. Current coverage is {minimum_snapshots}–{maximum_snapshots} snapshots; "
+                    "each asset needs at least 4 snapshots in this exact timeframe."
+                )
+            else:
+                flow_event_columns = [
+                    'Asset', 'Chain', 'Timeframe', 'Event', 'Event Time (Ghana)',
+                    'Flow Z', 'Flow Z Change', 'Momentum Z Change', 'Trend Z Change',
+                    'Volatility Z Change', 'Price Change %', 'Volatility Regime',
+                    'Demand Score', 'Supply Score', 'Demand/Supply Verdict',
+                    'History Confidence', 'Stored Snapshots', 'Pair Address',
+                ]
+                flow_event_styler = flow_event_analysis[
+                    flow_event_columns
+                ].sort_values(['Asset', 'Event']).style.format({
+                    'Flow Z': '{:+.2f}',
+                    'Flow Z Change': '{:+.2f}',
+                    'Momentum Z Change': '{:+.2f}',
+                    'Trend Z Change': '{:+.2f}',
+                    'Volatility Z Change': '{:+.2f}',
+                    'Price Change %': '{:+.3f}%',
+                    'Demand Score': '{:.0f}/100',
+                    'Supply Score': '{:.0f}/100',
+                }).map(
+                    color_metrics,
+                    subset=[
+                        'Flow Z', 'Flow Z Change', 'Momentum Z Change',
+                        'Trend Z Change', 'Volatility Z Change', 'Price Change %',
+                    ],
+                )
+                st.dataframe(
+                    flow_event_styler,
+                    width='stretch',
+                    hide_index=True,
+                    height=min(700, 38 * len(flow_event_analysis) + 38),
+                )
+                st.caption(
+                    "Each asset contributes its single largest historical Flow Z drop and "
+                    "single largest historical Flow Z rise within the stored data for this "
+                    "timeframe. Scoring is 60% flow direction, 25% momentum direction and "
+                    "15% aligned volatility expansion."
+                )
+
+            if ready_assets < len(dex_overview) and not flow_event_coverage.empty:
+                with st.expander("Assets still building historical coverage"):
+                    pending_coverage = flow_event_coverage[
+                        ~flow_event_coverage['Ready']
+                    ][['Asset', 'Chain', 'Stored Snapshots', 'Pair Address']]
+                    st.dataframe(pending_coverage, width='stretch', hide_index=True)
+
             st.markdown("#### Historical Z-Score Component Analysis")
             asset_options = {
                 f"{row['Asset']} | {row['Chain']} | {str(row['Pair Address'])[:10]}...": (
@@ -6380,20 +6815,20 @@ Each component is standardized across the displayed price bands before the weigh
             dex_history = load_dexscreener_component_history(
                 selected_chain, selected_pair, dex_horizon
             )
-            if len(dex_history) < 10:
+            if len(dex_history) < 4:
                 st.warning(
                     f"{len(dex_history)} stored snapshot(s) are available for this pair/window. "
-                    "At least 10 observations are needed to display rolling component Z-scores; "
-                    "50 observations provide the full lookback. Use Refresh over time to build history."
+                    "At least 4 observations are needed for provisional component events; "
+                    "10 observations improve confidence and 50 provide the full lookback."
                 )
                 st.markdown("##### Demand and Supply Analysis — Highest Drop")
                 st.info(
-                    f"Waiting for historical observations: {len(dex_history)}/10 stored "
+                    f"Waiting for historical observations: {len(dex_history)}/4 stored "
                     f"snapshots for this exact pair and {dex_horizon} window."
                 )
                 st.markdown("##### Demand and Supply Analysis — Highest Rise")
                 st.info(
-                    f"Waiting for historical observations: {len(dex_history)}/10 stored "
+                    f"Waiting for historical observations: {len(dex_history)}/4 stored "
                     f"snapshots for this exact pair and {dex_horizon} window."
                 )
                 st.caption(
