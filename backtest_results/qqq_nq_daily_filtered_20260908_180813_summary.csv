@@ -1,0 +1,2 @@
+Trades,New confirmations,Skipped,Win Rate %,Net R,Average R,Net Points,Profit Factor (points),Max Closed Drawdown R,Trades with bar gaps,Start,End,Timeframe,Threshold,Target,ATR_Multiple,Slippage_Per_Fill_Points,Round_Trip_Fees_Points,Daily_Alert_Timeframe,Daily_Z_Threshold,Filter,Source
+1,2,1,0.0,-1.0152505446623306,-1.0152505446623306,-49.92857142857247,0.0,1.0152505446623306,0,2026-08-09,2026-09-08,1h,10,Nearest 1h liquidity zone,1.0,0.25,0.5,1h,1.0,Positive QQQ/NQ with negative VIX for BUY; inverse for SELL,"Overview daily alert builder, reconstructed for QA"

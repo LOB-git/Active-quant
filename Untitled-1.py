@@ -14,6 +14,10 @@ import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 import plotly.graph_objects as go
 import streamlit.components.v1 as components
+from qqq_nq_signals import historical_z_components, demand_supply_score
+from qqq_nq_panel import render_qqq_nq_panel
+from qqq_nq_backtest_panel import render_qqq_nq_backtest
+from historical_flow_analysis import analyze_ghana_flow_events, highest_flow_zone
 
 # Keep yfinance's SQLite caches in the writable project directory. This avoids
 # "unable to open database file" failures when the dashboard runs sandboxed.
@@ -139,6 +143,80 @@ def fetch_fear_and_greed_history():
         return None
 
 @st.cache_data(ttl=300)
+def fetch_yahoo_ohlcv(symbol, timeframe='1h', start_date=None, end_date=None):
+    """Get Yahoo OHLCV and normalize it to this dashboard's candle contract.
+
+    BTC/USD deliberately uses Yahoo's BTC-USD rather than the Binance BTC/USDT
+    endpoint. This keeps the US Indices views available where Binance is blocked.
+    """
+    yf_interval = {'1h': '60m', '4h': '60m', '12h': '60m'}.get(timeframe, timeframe)
+    intraday = {'1m', '2m', '5m', '15m', '30m', '60m', '90m'}
+    effective_start = start_date
+    if start_date and yf_interval in intraday:
+        earliest = (datetime.now() - timedelta(days=59)).strftime('%Y-%m-%d')
+        if str(start_date) < earliest:
+            effective_start = earliest
+    cache_name = f"{symbol.lower().replace('-', '_')}_{yf_interval}.csv"
+    cache_path = os.path.join(YFINANCE_CACHE_DIR, cache_name)
+    cache_used = False
+    try:
+        if effective_start:
+            data = yf.download(
+                symbol, start=effective_start, end=end_date, interval=yf_interval,
+                progress=False, prepost=True, auto_adjust=False,
+            )
+        else:
+            period = '60d' if yf_interval in intraday else '2y'
+            data = yf.download(
+                symbol, period=period, interval=yf_interval,
+                progress=False, prepost=True, auto_adjust=False,
+            )
+            if data.empty:
+                data = yf.Ticker(symbol).history(
+                    period=period, interval=yf_interval, prepost=True,
+                )
+    except Exception:
+        data = pd.DataFrame()
+    if data is None or data.empty:
+        # Do not silently switch exchanges. A prior successful Yahoo response
+        # is a clearly labelled fallback if this local app cannot reach it.
+        try:
+            data = pd.read_csv(cache_path, index_col='date', parse_dates=True)
+            cache_used = not data.empty
+        except (OSError, ValueError, pd.errors.ParserError):
+            data = pd.DataFrame()
+    if data is None or data.empty:
+        return pd.DataFrame()
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.get_level_values(0)
+    data.columns = [str(column).strip().lower() for column in data.columns]
+    required = ['open', 'high', 'low', 'close', 'volume']
+    if not set(required).issubset(data.columns):
+        return pd.DataFrame()
+    data = data[required].copy()
+    if not isinstance(data.index, pd.DatetimeIndex):
+        return pd.DataFrame()
+    if data.index.tz is not None:
+        data.index = data.index.tz_convert('UTC').tz_localize(None)
+    data.index.name = 'date'
+    if not cache_used:
+        try:
+            data.to_csv(cache_path, index_label='date')
+        except OSError:
+            pass
+    resample_rule = {'4h': '4h', '12h': '12h'}.get(timeframe)
+    if resample_rule:
+        data = data.resample(resample_rule).agg({
+            'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum',
+        }).dropna()
+    data.attrs['source_status'] = (
+        f"Cached Yahoo BTC-USD candles ({yf_interval}); live refresh unavailable"
+        if cache_used else f"Live Yahoo BTC-USD candles ({yf_interval})"
+    )
+    return data
+
+
+@st.cache_data(ttl=300)
 def fetch_and_analyze(symbol='BTC/USDT', timeframe='1h', start_date=None, end_date=None, silent=False, limit=None):
     """
     Fetches Crypto Data (via ccxt/Binance) and calculates Multi-Strategy Factors.
@@ -150,86 +228,97 @@ def fetch_and_analyze(symbol='BTC/USDT', timeframe='1h', start_date=None, end_da
             'XAUUSD=X': 'GC=F',
             'XAGUSD': 'SI=F',
             'XAGUSD=X': 'SI=F',
-            'BTC/USD': 'BTC/USDT',
         }
         symbol = symbol_aliases.get(raw_symbol.upper(), raw_symbol)
 
+        # BTC/USD belongs to the US Indices panels and uses Yahoo's BTC-USD
+        # series, not Binance's BTC/USDT. It also supports the panel's 12h view.
+        is_btc_usd = raw_symbol.upper() in {'BTC/USD', 'BTC-USD'}
+        if is_btc_usd:
+            symbol = 'BTC-USD'
+
         stock_index_symbols = ['SPY', 'QQQ', 'DIA', 'NQ=F', 'YM=F', '^VIX', 'DX-Y.NYB', 'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'LLY', 'JPM', 'GBPUSD=X', '^FTSE', 'XAUUSD', 'XAUUSD=X', 'GC=F', 'GLD']
         is_stock_index = symbol in stock_index_symbols or raw_symbol in stock_index_symbols or raw_symbol.upper() in stock_index_symbols
+        uses_yahoo_source = is_stock_index or is_btc_usd
 
         # Handle Symbol Formatting (e.g., BTC-USD -> BTC/USDT for Binance)
-        if not is_stock_index and symbol.endswith('-USD'):
+        if not uses_yahoo_source and symbol.endswith('-USD'):
             symbol = symbol.replace('-USD', '/USDT')
-        elif not is_stock_index and '-' in symbol:
+        elif not uses_yahoo_source and '-' in symbol:
             symbol = symbol.replace('-', '/')
         
         df = pd.DataFrame()
         
         # Check if symbol is a Stock/ETF to fetch via yfinance
-        if is_stock_index:
+        if uses_yahoo_source:
             # Fetch Stock Data via yfinance
             print(f"Fetching data for {symbol} via yfinance...")
+            if is_btc_usd:
+                df = fetch_yahoo_ohlcv(
+                    symbol, timeframe=timeframe, start_date=start_date, end_date=end_date,
+                )
+            else:
             # yfinance uses minute-based intervals for intraday data; map/hourly intervals where needed
-            yf_interval = timeframe
-            if timeframe == '1h':
-                yf_interval = '60m'
-            # For 4-hour, fetch 60m data then resample to 4H below
-            if timeframe == '4h':
-                yf_interval = '60m'
+                yf_interval = timeframe
+                if timeframe == '1h':
+                    yf_interval = '60m'
+                # For 4-hour, fetch 60m data then resample to 4H below
+                if timeframe == '4h':
+                    yf_interval = '60m'
 
-            # Choose period: intraday intervals are limited to ~60 days of history
-            intraday_intervals = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '4h']
+                # Choose period: intraday intervals are limited to ~60 days of history
+                intraday_intervals = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '4h']
 
-            # yfinance intraday data is limited to the last 60 days.
+                # yfinance intraday data is limited to the last 60 days.
             # If an intraday timeframe is selected with a start_date older than that,
             # yfinance will fail. We adjust the start_date if necessary.
-            effective_start_date = start_date
-            if start_date and timeframe in intraday_intervals:
-                sixty_days_ago = (datetime.now() - timedelta(days=59)).strftime('%Y-%m-%d')
-                if start_date < sixty_days_ago:
-                    effective_start_date = sixty_days_ago
+                effective_start_date = start_date
+                if start_date and timeframe in intraday_intervals:
+                    sixty_days_ago = (datetime.now() - timedelta(days=59)).strftime('%Y-%m-%d')
+                    if start_date < sixty_days_ago:
+                        effective_start_date = sixty_days_ago
 
-            if start_date:
-                try:
-                    df = yf.download(
-                        symbol,
-                        start=effective_start_date,
-                        end=end_date,
-                        interval=yf_interval,
-                        progress=False,
-                        prepost=True,
-                    )
-                except Exception:
-                    df = pd.DataFrame()
-            else:
-                period = '60d' if timeframe in intraday_intervals else '2y'
-                try:
-                    df = yf.download(symbol, period=period, interval=yf_interval, progress=False, prepost=True)
-                except Exception:
-                    df = pd.DataFrame()
-                if df.empty:
-                    df = yf.Ticker(symbol).history(period=period, interval=yf_interval, prepost=True) # Fallback
+                if start_date:
+                    try:
+                        df = yf.download(
+                            symbol,
+                            start=effective_start_date,
+                            end=end_date,
+                            interval=yf_interval,
+                            progress=False,
+                            prepost=True,
+                        )
+                    except Exception:
+                        df = pd.DataFrame()
+                else:
+                    period = '60d' if timeframe in intraday_intervals else '2y'
+                    try:
+                        df = yf.download(symbol, period=period, interval=yf_interval, progress=False, prepost=True)
+                    except Exception:
+                        df = pd.DataFrame()
+                    if df.empty:
+                        df = yf.Ticker(symbol).history(period=period, interval=yf_interval, prepost=True) # Fallback
             
-            # Flatten MultiIndex columns (yfinance v0.2+)
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
+                # Flatten MultiIndex columns (yfinance v0.2+)
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
                 
-            # Normalize columns
-            df.columns = [c.lower() for c in df.columns]
-            df.index.name = 'date'
+                # Normalize columns
+                df.columns = [c.lower() for c in df.columns]
+                df.index.name = 'date'
             
-            # Strip timezone to avoid merge_asof crashes with Fear & Greed data
-            if isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None:
-                df.index = df.index.tz_convert('UTC').tz_localize(None)
-            # If we fetched 60m data but the user requested 4h, resample to 4H candles
-            if timeframe == '4h' and not df.empty:
-                df = df.resample('4H').agg({
-                    'open': 'first',
-                    'high': 'max',
-                    'low': 'min',
-                    'close': 'last',
-                    'volume': 'sum'
-                }).dropna()
+                # Strip timezone to avoid merge_asof crashes with Fear & Greed data
+                if isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None:
+                    df.index = df.index.tz_convert('UTC').tz_localize(None)
+                # If we fetched 60m data but the user requested 4h, resample to 4H candles
+                if timeframe == '4h' and not df.empty:
+                    df = df.resample('4H').agg({
+                        'open': 'first',
+                        'high': 'max',
+                        'low': 'min',
+                        'close': 'last',
+                        'volume': 'sum'
+                    }).dropna()
             
         else:
             # Fetch Crypto Data via Binance (CCXT)
@@ -1111,14 +1200,11 @@ def scan_and_rank_crypto():
     return pd.DataFrame(stats)
 
 @st.cache_data(ttl=300)
-def scan_top_derivative_assets(timeframe='1h', flow_timeframe=None, volume_timeframe='1h', top_n=30):
+def scan_top_derivative_assets(timeframe='1h', top_n=30):
     """
     Scan top derivative (swap) pairs and compute momentum, z-score, inflow/outflow, and liquidity.
-    `timeframe` is used for momentum/z-score; `flow_timeframe` is used to compute inflow/outflow.
-    `volume_timeframe` is used for the short-term volume component in liquidity ratio.
+    `timeframe` is used for momentum/z-score and for inflow/volume calculations.
     """
-    if flow_timeframe is None:
-        flow_timeframe = timeframe
 
     def fetch_market_caps(symbols):
         market_caps = {}
@@ -1154,25 +1240,131 @@ def scan_top_derivative_assets(timeframe='1h', flow_timeframe=None, volume_timef
     exchange = ccxt.binance({'enableRateLimit': True, 'options': {'defaultType': 'swap'}})
     # Use Bybit for derivatives as it has fewer geographical restrictions than Binance
     exchange = ccxt.bybit({'enableRateLimit': True, 'options': {'defaultType': 'swap'}})
+    tickers = {}
+    swap_symbols = []
     try:
-        tickers = exchange.fetch_tickers()
+        markets = exchange.fetch_markets()
+        for m in markets:
+            sym = m.get('symbol')
+            if not sym:
+                continue
+            if not m.get('active', True):
+                continue
+            mtype = (m.get('type') or '').lower()
+            # prefer explicit swap markets, or contract markets, or USDT-quoted pairs
+            if mtype == 'swap' or m.get('contract') is True or sym.endswith(':USDT') or sym.endswith('/USDT'):
+                swap_symbols.append(sym)
+
+        if not swap_symbols:
+            raise ValueError('no swap symbols found')
+
+        # Group symbols by market type and base currency (Bybit requires same base)
+        market_map = {m.get('symbol'): m for m in markets if m.get('symbol')}
+        from collections import defaultdict
+        groups = defaultdict(list)
+        for s in swap_symbols:
+            m = market_map.get(s, {})
+            mtype = (m.get('type') or m.get('info', {}).get('type') or 'swap').lower()
+            base = m.get('base') or (m.get('info') or {}).get('baseCoin') or ''
+            key = (mtype, base)
+            groups[key].append(s)
+
+        tickers = {}
+        import time
+        for (mtype, base), syms in groups.items():
+            # fetch in small batches where all symbols share the same base
+            batch_size = 80
+            for i in range(0, len(syms), batch_size):
+                batch = syms[i:i+batch_size]
+                try:
+                    part = exchange.fetch_tickers(batch)
+                    if part:
+                        tickers.update(part)
+                except Exception:
+                    # fallback to fetching all tickers and filter if batch fetch fails
+                    try:
+                        all_t = exchange.fetch_tickers()
+                        for k, v in all_t.items():
+                            if k in batch:
+                                tickers[k] = v
+                    except Exception:
+                        pass
+                time.sleep(0.15)
     except Exception as e:
-        st.error(f"Could not fetch derivative tickers: {e}")
-        st.error(f"Could not fetch derivative tickers from {exchange.id}: {e}")
-        return pd.DataFrame()
+        st.error(f"Could not retrieve derivative markets from {exchange.id}: {e}")
+        # Fallback: try Binance futures/swap markets if Bybit fails
+        try:
+            # Try to get derivative markets via HTTP public APIs to avoid default spot endpoints
+            swap_symbols = []
+            if exchange.id == 'bybit':
+                try:
+                    # Bybit v5 linear (USDT perpetual) instruments
+                    r = requests.get('https://api.bybit.com/v5/market/instruments-info?category=linear', timeout=10)
+                    items = r.json().get('result', {}).get('list', [])
+                    for it in items:
+                        sym = it.get('symbol') or it.get('name')
+                        if not sym:
+                            continue
+                        # convert BYBIT symbol like 'BTCUSDT' to ccxt 'BTC/USDT'
+                        if sym.endswith('USDT'):
+                            swap_symbols.append(f"{sym[:-4]}/USDT")
+                except Exception:
+                    swap_symbols = []
+            elif exchange.id == 'binance':
+                try:
+                    # Binance USDT-M futures exchange info
+                    r = requests.get('https://fapi.binance.com/fapi/v1/exchangeInfo', timeout=10)
+                    for s in r.json().get('symbols', []):
+                        if s.get('contract') or s.get('contractType'):
+                            sym = s.get('symbol')
+                            if sym and sym.endswith('USDT'):
+                                swap_symbols.append(f"{sym[:-4]}/USDT")
+                except Exception:
+                    swap_symbols = []
+
+            # If we found symbols via HTTP, fetch tickers per-symbol to avoid ccxt spot endpoints
+            if swap_symbols:
+                tickers = {}
+                for sym in swap_symbols:
+                    try:
+                        t = exchange.fetch_ticker(sym)
+                        if t:
+                            tickers[sym] = t
+                    except Exception:
+                        # ignore per-symbol failures
+                        continue
+                st.warning(f"Falling back to {exchange.id} derivative HTTP endpoint for markets (collected {len(tickers)} tickers)")
+            else:
+                # final fallback: try ccxt.binance defaultType=future/swap
+                exchange = ccxt.binance({'enableRateLimit': True, 'options': {'defaultType': 'swap'}})
+                markets = exchange.fetch_markets()
+                swap_symbols = [m.get('symbol') for m in markets if m.get('symbol') and ((m.get('type') or '').lower() == 'swap' or m.get('contract') is True or m.get('symbol').endswith(':USDT') or m.get('symbol').endswith('/USDT'))]
+                if swap_symbols:
+                    try:
+                        tickers = exchange.fetch_tickers(swap_symbols)
+                    except Exception:
+                        tickers_all = exchange.fetch_tickers()
+                        tickers = {s: v for s, v in tickers_all.items() if s in swap_symbols}
+                st.warning(f"Falling back to {exchange.id} for derivative markets")
+        except Exception as e2:
+            st.error(f"Fallback to {exchange.id} also failed: {e2}")
+            return pd.DataFrame()
 
     swap_pairs = []
-    for pair, data in tickers.items():
+    for pair, data in (tickers or {}).items():
+        if not data:
+            continue
         if not data.get('active', True):
             continue
+        # accept USDT-quoted swap pairs
         if pair.endswith(':USDT') or pair.endswith('/USDT'):
-            if data.get('quoteVolume') is not None:
-                swap_pairs.append((pair, data))
+            vol = data.get('quoteVolume') or data.get('baseVolume') or 0
+            swap_pairs.append((pair, data))
 
     if not swap_pairs:
         return pd.DataFrame()
 
-    swap_pairs.sort(key=lambda x: x[1].get('quoteVolume', 0), reverse=True)
+    swap_pairs.sort(key=lambda x: (x[1].get('quoteVolume') or x[1].get('baseVolume') or 0), reverse=True)
     swap_pairs = swap_pairs[:top_n]
 
     funding_rates = {}
@@ -1254,7 +1446,7 @@ def scan_top_derivative_assets(timeframe='1h', flow_timeframe=None, volume_timef
             df['ma20'] = df['close'].rolling(window=20).mean()
 
             try:
-                ohlcv_flow = exchange.fetch_ohlcv(full_symbol, timeframe=flow_timeframe, limit=100)
+                ohlcv_flow = exchange.fetch_ohlcv(full_symbol, timeframe=timeframe, limit=100)
                 if ohlcv_flow:
                     df_flow = pd.DataFrame(ohlcv_flow, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                     df_flow['open'] = pd.to_numeric(df_flow['open'], errors='coerce')
@@ -1381,7 +1573,7 @@ def scan_top_derivative_assets(timeframe='1h', flow_timeframe=None, volume_timef
                     '15m': vol_15m,
                     '1h': vol_1h,
                     '4h': vol_4h
-                }.get(volume_timeframe, vol_1h)
+                }.get(timeframe, vol_1h)
                 if market_cap > 0:
                     liquidity_ratio = (selected_vol / market_cap) * float(ticker.get('quoteVolume', 0.0))
             except Exception:
@@ -1987,6 +2179,7 @@ def build_daily_zscore_alert_history(
     timeframe,
     threshold=1.0,
     momentum_z_series=None,
+    as_of=None,
 ):
     """Build first daily Z alerts, optionally requiring aligned Momentum Z confirmation."""
     if df is None or df.empty:
@@ -2009,6 +2202,10 @@ def build_daily_zscore_alert_history(
     ghana_times = timestamps.tz_convert('Africa/Accra')
     history['Ghana Time'] = ghana_times
     history['Ghana Date'] = ghana_times.date
+    if as_of is not None:
+        cutoff = pd.Timestamp(as_of)
+        cutoff = cutoff.tz_localize('UTC') if cutoff.tzinfo is None else cutoff.tz_convert('UTC')
+        history = history.loc[history['Ghana Time'] <= cutoff]
     positive_condition = history['Z-Score'] >= float(threshold)
     negative_condition = history['Z-Score'] <= -float(threshold)
     if momentum_z_series is not None:
@@ -2601,7 +2798,7 @@ def plot_volatility_surface(df, symbol):
     return fig, price_prediction_data
 
 @st.cache_data(ttl=300)
-def build_derivative_factor_history(symbol, timeframe='1h', flow_timeframe='1h', lookback=200):
+def build_derivative_factor_history(symbol, timeframe='1h', lookback=200):
     """Build historical factor series for a selected derivative asset."""
     try:
         exchange = ccxt.bybit({'enableRateLimit': True, 'options': {'defaultType': 'swap'}})
@@ -3354,8 +3551,6 @@ def main():
         st.subheader("Top Derivatives Trend Scan")
         st.write("Scan the top Binance USDT perpetual contract derivatives and compare momentum with Z-score.")
         timeframe_deriv = st.selectbox("Select timeframe", ["5m", "15m", "1h", "4h"], index=2)
-        flow_timeframe = st.selectbox("Inflow/Outflow timeframe", ["5m", "15m", "1h", "4h"], index=2)
-        volume_timeframe = st.selectbox("Short-term volume timeframe", ["5m", "15m", "1h", "4h"], index=2)
 
         # Initialize session state to hold the dataframe from the scan
         if 'df_deriv' not in st.session_state:
@@ -3363,7 +3558,7 @@ def main():
 
         if st.button("Scan Top Derivatives"):
             with st.spinner("Scanning top derivative assets..."):
-                df_deriv = scan_top_derivative_assets(timeframe=timeframe_deriv, flow_timeframe=flow_timeframe, volume_timeframe=volume_timeframe, top_n=100)
+                df_deriv = scan_top_derivative_assets(timeframe=timeframe_deriv, top_n=100)
                 if df_deriv is not None and not df_deriv.empty:
                     # Store the results in session state to persist them
                     df_deriv['momentum'] = df_deriv['momentum'].fillna(0)
@@ -3556,7 +3751,7 @@ def main():
 
                 if st.button(f"Show historic factor chart for {history_symbol_deriv}", key="show_history_factors_deriv"):
                     with st.spinner(f"Loading historical factors for {history_symbol_deriv}..."):
-                        history_df = build_derivative_factor_history(history_symbol_deriv, timeframe=timeframe_deriv, flow_timeframe=flow_timeframe)
+                        history_df = build_derivative_factor_history(history_symbol_deriv, timeframe=timeframe_deriv)
                         if history_df is not None and not history_df.empty:
                             fig = go.Figure()
                             fig.add_trace(go.Scatter(x=history_df.index, y=history_df['momentum_z'], mode='lines', name='Momentum Z', line=dict(color='#00C2FF')))
@@ -3700,6 +3895,7 @@ def main():
         
         if st.button("Refresh Indices Data"):
             with st.spinner("Fetching US Indices Data..."):
+                daily_alert_snapshot_time = pd.Timestamp.now(tz='UTC')
                 indices = overview_indices
                 index_stats = []
                 missing_indices = []
@@ -3744,6 +3940,7 @@ def main():
                                 timeframe,
                                 threshold=float(index_alert_z_threshold),
                                 momentum_z_series=historical_momentum_z,
+                                as_of=daily_alert_snapshot_time,
                             )
                         )
                         volume_ratio_series = (
@@ -3806,6 +4003,7 @@ def main():
                     reverse=True,
                 )
                 st.session_state.daily_ghana_zscore_alert_timeframe = timeframe
+                st.session_state.daily_ghana_zscore_alert_built_at = daily_alert_snapshot_time
                 st.session_state.daily_ghana_zscore_alert_threshold = float(
                     index_alert_z_threshold
                 )
@@ -4006,6 +4204,7 @@ def main():
                 "For each Ghana calendar day, this table shows the first time each symbol "
                 "had aligned Z-Score and Momentum Z values at the positive threshold, and "
                 "the first aligned negative event. Ghana uses GMT (Africa/Accra) year-round."
+                " Alert times are candle closes; unfinished candles are excluded when refreshed."
             )
             if st.session_state.daily_ghana_zscore_alerts:
                 daily_ghana_alerts_df = pd.DataFrame(
@@ -4328,11 +4527,18 @@ def main():
                     st.session_state['historical_z_chart_data'] = df_z_hist
                     st.session_state['historical_z_chart_config'] = z_chart_config
                 else:
-                    st.error(f"Could not fetch data to generate Z-chart for {z_chart_asset}.")
+                    source_hint = (
+                        " BTC/USD uses Yahoo's BTC-USD source; no live or cached candles were available."
+                        if z_chart_asset == 'BTC/USD' else ""
+                    )
+                    st.error(f"Could not fetch data to generate Z-chart for {z_chart_asset}.{source_hint}")
 
             # Retain the fetched history so changing the date redraws the analysis without another API call.
             if st.session_state.get('historical_z_chart_config') == z_chart_config:
                 df_z_hist = st.session_state.get('historical_z_chart_data').copy()
+                source_status = df_z_hist.attrs.get('source_status')
+                if source_status:
+                    st.caption(source_status)
                 historical_index = pd.DatetimeIndex(df_z_hist.index)
                 if historical_index.tz is None:
                     ghana_history_index = historical_index.tz_localize('UTC')
@@ -4353,21 +4559,7 @@ def main():
                     st.caption(f"Showing component analysis for {selected_z_date:%B %d, %Y}.")
 
                     # Calculate each component against the complete fetched history, then show the chosen date.
-                    df_z_hist['is_up'] = df_z_hist['close'] >= df_z_hist['open']
-                    inflow = df_z_hist['volume'].where(df_z_hist['is_up'], 0)
-                    outflow = df_z_hist['volume'].where(~df_z_hist['is_up'], 0)
-                    rolling_inflow = inflow.rolling(window=20).sum()
-                    rolling_outflow = outflow.rolling(window=20).sum()
-                    df_z_hist['money_flow_signal'] = (rolling_inflow - rolling_outflow) / (rolling_inflow + rolling_outflow)
-
-                    def rolling_zscore(series, window=50):
-                        return (series - series.rolling(window).mean()) / series.rolling(window).std()
-
-                    full_z_df = pd.DataFrame(index=df_z_hist.index)
-                    full_z_df['Momentum (z)'] = rolling_zscore(df_z_hist['momentum'])
-                    full_z_df['Flow (z)'] = rolling_zscore(df_z_hist['money_flow_signal'])
-                    full_z_df['Volatility (z)'] = rolling_zscore(df_z_hist['atr14'])
-                    full_z_df['Trend (z)'] = rolling_zscore(df_z_hist['z_score'])
+                    full_z_df = historical_z_components(df_z_hist)
                     full_component_changes = full_z_df.diff()
                     selected_ghana_mask = np.asarray(
                         ghana_history_index.date
@@ -4432,26 +4624,13 @@ def main():
                             alert_price_change = (
                                 float(alert_price_row['close']) - alert_previous_close
                             )
-                            alert_flow_contribution = (
-                                0.60 * np.tanh(flow_change_alert)
-                            )
-                            alert_momentum_contribution = (
-                                0.25 * np.tanh(momentum_change_alert)
-                            )
-                            alert_volatility_direction = (
-                                np.sign(alert_price_change)
-                                * np.tanh(abs(volatility_change_alert))
-                                if volatility_change_alert > 0 else 0.0
-                            )
-                            alert_volatility_contribution = (
-                                0.15 * alert_volatility_direction
-                            )
-                            alert_direction_score = 100 * (
-                                alert_flow_contribution
-                                + alert_momentum_contribution
-                                + alert_volatility_contribution
-                            )
-                            if alert_direction_score >= 10:
+                            alert_direction_score = float(demand_supply_score(
+                                flow_change_alert, momentum_change_alert,
+                                volatility_change_alert, alert_price_change,
+                            ))
+                            if not np.isfinite(alert_direction_score):
+                                alert_classification = 'Insufficient factor data'
+                            elif alert_direction_score >= 10:
                                 alert_classification = 'Demand Alert'
                             elif alert_direction_score <= -10:
                                 alert_classification = 'Supply Alert'
@@ -4847,6 +5026,9 @@ def main():
                                     width='stretch',
                                     hide_index=True,
                                 )
+
+        render_qqq_nq_panel(fetch_and_analyze)
+        render_qqq_nq_backtest(fetch_and_analyze, calculate_liquidity_zones)
 
         # --- Zone Battle Score ---
         st.divider()
@@ -5395,8 +5577,6 @@ Each component is standardized across the displayed price bands before the weigh
             rr_ratios = st.multiselect("Take Profit R:R Ratios", options=[1.0, 1.5, 2.0, 2.5, 3.0], default=[1.5, 2.0])
         with col2:
             backtest_timeframe = st.selectbox("Backtest timeframe", ["5m", "15m", "1h", "4h"], index=2, key="bt_tf")
-        with col2:
-            backtest_flow_timeframe = st.selectbox("Flow timeframe", ["5m", "15m", "1h", "4h"], index=2, key="bt_flow_tf")
         with col3:
             lookback_option = st.radio("Date Range", ["Last N Days", "Custom Range"], index=0, key="bt_lookback_option")
         
@@ -5870,17 +6050,13 @@ Each component is standardized across the displayed price bands before the weigh
         c1_deriv, c2_deriv, c3_deriv = st.columns(3)
         with c1_deriv:
             timeframe_deriv_new = st.selectbox("Select timeframe", ["5m", "15m", "1h", "4h"], index=2, key="tf_deriv_new")
-        with c2_deriv:
-            flow_timeframe_new = st.selectbox("Inflow/Outflow timeframe", ["5m", "15m", "1h", "4h"], index=2, key="flow_tf_new")
-        with c3_deriv:
-            volume_timeframe_new = st.selectbox("Short-term volume timeframe", ["5m", "15m", "1h", "4h"], index=2, key="vol_tf_new")
 
         if 'df_deriv_new' not in st.session_state:
             st.session_state.df_deriv_new = pd.DataFrame()
 
         if st.button("Scan Top Derivatives", key="scan_deriv_new"):
             with st.spinner("Scanning top derivative assets..."):
-                df_deriv_new = scan_top_derivative_assets(timeframe=timeframe_deriv_new, flow_timeframe=flow_timeframe_new, volume_timeframe=volume_timeframe_new, top_n=20)
+                df_deriv_new = scan_top_derivative_assets(timeframe=timeframe_deriv_new, top_n=20)
                 if df_deriv_new is not None and not df_deriv_new.empty:
                     st.session_state.df_deriv_new = df_deriv_new
                 else:
@@ -5904,7 +6080,7 @@ Each component is standardized across the displayed price bands before the weigh
             # --- Historical Z-Score Component Analysis for scanned derivative assets ---
             st.divider()
             st.subheader("Historical Z-Score Component Analysis")
-            st.caption("Select a scanned derivative asset, then choose a historical date to review its component Z-scores and downward-move events.")
+            st.caption("Select a scanned derivative asset, then choose a Ghana date to review the same component, Flow-Z alert, and demand/supply logic used in US Indices.")
             deriv_z_symbols = df_deriv_new['symbol'].dropna().tolist()
             deriv_z_asset = st.selectbox("Select scanned asset for Z-Score analysis", deriv_z_symbols, key='deriv_z_chart_asset')
             deriv_z_timeframe = st.selectbox(
@@ -5938,22 +6114,9 @@ Each component is standardized across the displayed price bands before the weigh
                         )
                     st.caption(f"Showing component analysis for {deriv_z_date:%B %d, %Y}.")
 
-                    deriv_z_history['is_up'] = deriv_z_history['close'] >= deriv_z_history['open']
-                    deriv_inflow = deriv_z_history['volume'].where(deriv_z_history['is_up'], 0)
-                    deriv_outflow = deriv_z_history['volume'].where(~deriv_z_history['is_up'], 0)
-                    deriv_inflow = deriv_inflow.rolling(window=20).sum()
-                    deriv_outflow = deriv_outflow.rolling(window=20).sum()
-                    deriv_z_history['money_flow_signal'] = (deriv_inflow - deriv_outflow) / (deriv_inflow + deriv_outflow)
-
-                    def deriv_rolling_zscore(series, window=50):
-                        return (series - series.rolling(window).mean()) / series.rolling(window).std()
-
-                    deriv_z_df = pd.DataFrame(index=deriv_z_history.index)
-                    deriv_z_df['Momentum (z)'] = deriv_rolling_zscore(deriv_z_history['momentum'])
-                    deriv_z_df['Flow (z)'] = deriv_rolling_zscore(deriv_z_history['money_flow_signal'])
-                    deriv_z_df['Volatility (z)'] = deriv_rolling_zscore(deriv_z_history['atr14'])
-                    deriv_z_df['Trend (z)'] = deriv_rolling_zscore(deriv_z_history['z_score'])
-                    deriv_z_df = deriv_z_df.loc[pd.DatetimeIndex(deriv_z_df.index).date == deriv_z_date]
+                    deriv_z_df, deriv_component_changes, deriv_flow_alerts = analyze_ghana_flow_events(
+                        deriv_z_history, deriv_z_asset, deriv_z_date
+                    )
 
                     if deriv_z_df.empty:
                         st.info("No historical Z-score data is available for the selected date.")
@@ -5968,6 +6131,69 @@ Each component is standardized across the displayed price bands before the weigh
                             template='plotly_dark'
                         )
                         st.plotly_chart(deriv_fig_z, width='stretch')
+
+                        # Same Ghana-day Flow-Z alert table used by Historical Z-Score Component Analysis.
+                        st.subheader("All Historical Demand & Supply Rise/Drop Alerts â€” Ghana Day")
+                        st.caption(
+                            f"All Flow Z rise and drop events for {deriv_z_asset} during Ghana day "
+                            f"{deriv_z_date:%Y-%m-%d}, using {deriv_z_timeframe} candles. "
+                            "The first event after Ghana midnight is compared with the preceding candle."
+                        )
+                        if deriv_flow_alerts.empty:
+                            st.info("No valid Flow Z rise or drop alert exists for this asset during the selected Ghana day.")
+                        else:
+                            deriv_alert_counts = deriv_flow_alerts['Alert'].value_counts()
+                            deriv_alert_metrics = st.columns(3)
+                            deriv_alert_metrics[0].metric("Total Alerts", len(deriv_flow_alerts))
+                            deriv_alert_metrics[1].metric("Rise Alerts", int(deriv_alert_counts.get('Flow Z Rise Alert', 0)))
+                            deriv_alert_metrics[2].metric("Drop Alerts", int(deriv_alert_counts.get('Flow Z Drop Alert', 0)))
+                            deriv_alert_columns = [
+                                'Asset', 'Date', 'Alert', 'Ghana Time', 'Flow Z', 'Flow Z Change',
+                                'Momentum Z Change', 'Trend Z Change', 'Volatility Z Change', 'Price Change',
+                                'Zone Bottom', 'Zone Top', 'Direction Score', 'Demand/Supply Alert',
+                            ]
+                            st.dataframe(
+                                deriv_flow_alerts[deriv_alert_columns].sort_values('Ghana Time').style.format({
+                                    'Flow Z': '{:+.2f}', 'Flow Z Change': '{:+.2f}',
+                                    'Momentum Z Change': '{:+.2f}', 'Trend Z Change': '{:+.2f}',
+                                    'Volatility Z Change': '{:+.2f}', 'Price Change': '{:+,.2f}',
+                                    'Zone Bottom': '{:,.2f}', 'Zone Top': '{:,.2f}', 'Direction Score': '{:+.1f}',
+                                }).map(color_metrics, subset=[
+                                    'Flow Z', 'Flow Z Change', 'Momentum Z Change', 'Trend Z Change',
+                                    'Volatility Z Change', 'Price Change', 'Direction Score',
+                                ]), width='stretch', hide_index=True,
+                            )
+
+                            for deriv_direction, deriv_label in [('drop', 'Drop'), ('rise', 'Rise')]:
+                                deriv_zone = highest_flow_zone(deriv_flow_alerts, deriv_direction)
+                                if deriv_zone is None:
+                                    st.info(f"No Flow Z {deriv_direction} event was detected on this Ghana day.")
+                                    continue
+                                st.subheader(f"Demand & Supply Analysis â€” Highest Flow Z {deriv_label}")
+                                st.caption(
+                                    "Zone Direction Score = 60% Flow Z change + 25% Momentum Z change + "
+                                    "15% directional volatility regime. The candle range is a candidate zone, not order-book proof."
+                                )
+                                deriv_zone_metrics = st.columns(5)
+                                deriv_zone_metrics[0].metric('Classification', deriv_zone['Classification'])
+                                deriv_zone_metrics[1].metric('Direction Score', f"{deriv_zone['Direction Score']:+.1f}")
+                                deriv_zone_metrics[2].metric('Analyzed Component', 'Flow (z)')
+                                deriv_zone_metrics[3].metric(f"{deriv_label} Size", f"{deriv_zone['Event Size']:.2f}σ")
+                                deriv_zone_metrics[4].metric('Volatility Regime', deriv_zone['Volatility Regime'])
+                                deriv_zone_columns = [
+                                    'Asset', 'Ghana Time', 'Zone Bottom', 'Zone Top', 'Close', 'Flow Z Change',
+                                    'Momentum Z Change', 'Volatility Z Change', 'Price Change', 'Flow Contribution',
+                                    'Momentum Contribution', 'Volatility Contribution',
+                                ]
+                                st.dataframe(
+                                    pd.DataFrame([deriv_zone])[deriv_zone_columns].style.format({
+                                        'Zone Bottom': '{:.2f}', 'Zone Top': '{:.2f}', 'Close': '{:.2f}',
+                                        'Flow Z Change': '{:+.3f}', 'Momentum Z Change': '{:+.3f}',
+                                        'Volatility Z Change': '{:+.3f}', 'Price Change': '{:+.2f}',
+                                        'Flow Contribution': '{:+.1f}', 'Momentum Contribution': '{:+.1f}',
+                                        'Volatility Contribution': '{:+.1f}',
+                                    }), width='stretch', hide_index=True,
+                                )
 
                         deriv_drop_events = []
                         for column in deriv_z_df.columns:
@@ -6093,7 +6319,7 @@ Each component is standardized across the displayed price bands before the weigh
                 # For simplicity and responsiveness, we'll fetch it here.
                 with st.spinner(f"Fetching historical flow for {history_asset_new}..."):
                     # Use the timeframes selected for the crypto scan
-                    history_df = fetch_and_analyze(history_asset_new, timeframe=flow_timeframe_new, silent=True, limit=500)
+                    history_df = fetch_and_analyze(history_asset_new, timeframe=timeframe_deriv_new, silent=True, limit=500)
 
             if history_df is not None and not history_df.empty:
                 # Calculate cumulative flow for the selected asset

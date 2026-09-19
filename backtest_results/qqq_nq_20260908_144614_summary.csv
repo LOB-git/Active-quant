@@ -1,0 +1,2 @@
+Trades,New confirmations,Skipped,Win Rate %,Net R,Average R,Net Points,Profit Factor (points),Max Closed Drawdown R,Trades with bar gaps,Start,End,Timeframe,Threshold,Target,ATR_Multiple,Slippage_Per_Fill_Points,Round_Trip_Fees_Points
+20,27,7,20.0,-9.524279933195965,-0.47621399665979824,-183.61458333333212,0.5564865136876036,9.524279933195965,0,2026-08-09,2026-09-08,1h,10,Nearest 1h liquidity zone,1.0,0.25,0.5
