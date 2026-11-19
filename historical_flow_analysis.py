@@ -19,11 +19,12 @@ def classify_direction(score):
     return 'Unresolved / Balanced Zone'
 
 
-def analyze_ghana_flow_events(history, asset, selected_date):
+def analyze_ghana_flow_events(history, asset, selected_date, flow='proxy'):
     """Calculate the exact US Indices historical Flow-Z event logic for one day.
 
     Component changes are made against the full prior history before Ghana-day
     filtering, so the first event of a day uses its real preceding candle.
+    flow='real' builds Flow Z from taker buy vs sell volume ('taker_buy' column).
     """
     required = {'open', 'high', 'low', 'close', 'volume', 'momentum', 'atr14', 'z_score'}
     if history is None or history.empty or not required.issubset(history.columns):
@@ -31,7 +32,7 @@ def analyze_ghana_flow_events(history, asset, selected_date):
     data = history.copy()
     data.index = pd.to_datetime(data.index, utc=True)
     data = data[~data.index.duplicated(keep='last')].sort_index()
-    components = historical_z_components(data)
+    components = historical_z_components(data, flow)
     changes = components.diff()
     ghana_dates = data.index.tz_convert('Africa/Accra').date
     mask = np.asarray(ghana_dates) == selected_date

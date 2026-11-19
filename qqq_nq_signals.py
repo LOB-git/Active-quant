@@ -9,12 +9,26 @@ from qqq_nq_daily_alerts import confirm_with_daily_alerts
 TIMEFRAMES = {'5m': '5min', '15m': '15min', '1h': '1h', '4h': '4h'}
 
 
-def historical_z_components(history):
-    """Use the same 20-bar flow / 50-bar Z formulas as the US historical chart."""
-    is_up = history['close'] >= history['open']
+def historical_z_components(history, flow='proxy'):
+    """Use the same 20-bar flow / 50-bar Z formulas as the US historical chart.
+
+    flow='proxy' (default): money flow from candle colour (volume of green minus red candles).
+    flow='real': money flow from Binance taker volume ('taker_buy' column, same units as 'volume'):
+    volume bought with market orders minus volume sold with them.
+    """
     volume = pd.to_numeric(history['volume'], errors='coerce')
-    inflow = volume.where(is_up, 0).rolling(20).sum()
-    outflow = volume.where(~is_up, 0).rolling(20).sum()
+    if flow == 'real':
+        if 'taker_buy' not in history:
+            raise ValueError("flow='real' needs a 'taker_buy' column")
+        buy = pd.to_numeric(history['taker_buy'], errors='coerce')
+        inflow = buy.rolling(20).sum()
+        outflow = (volume - buy).rolling(20).sum()
+    elif flow == 'proxy':
+        is_up = history['close'] >= history['open']
+        inflow = volume.where(is_up, 0).rolling(20).sum()
+        outflow = volume.where(~is_up, 0).rolling(20).sum()
+    else:
+        raise ValueError("flow must be 'proxy' or 'real'")
     flow = (inflow - outflow) / (inflow + outflow).replace(0, np.nan)
 
     def z(series):

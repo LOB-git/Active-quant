@@ -1,0 +1,1439 @@
+2026-11-11 10:46:08 ERROR Telegram token/chat ID missing. Put TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in C:\Users\Frank\quant pro wth pre market\alert_secrets.env
+2026-11-11 11:31:57 INFO Added new default settings to C:\Users\Frank\quant pro wth pre market\alert_config.json
+2026-11-11 11:31:57 WARNING No Telegram token/chat ID in C:\Users\Frank\quant pro wth pre market\alert_secrets.env: skipping us_indices, derivatives. Watch list saving still runs.
+2026-11-11 11:31:57 INFO Loading dashboard functions...
+2026-11-11 11:32:03 INFO Runner started: groups=watchlist, checking every 300s
+2026-11-11 11:32:37 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 29 -> Regime Mean-Reverting: 26 -> $ Risk = $10.00: 23 -> Leverage < 0.40x: 8
+2026-11-11 11:32:37 INFO watchlist: saved 8 match(es) for 2026-11-11: PARTI/USDT, ALLO/USDT, SXT/USDT, ZRO/USDT, DASH/USDT, ERA/USDT, ON/USDT, HAEDAL/USDT
+2026-11-14 18:40:30 INFO Added new default settings to C:\Users\Frank\quant pro wth pre market\alert_config.json
+2026-11-14 18:40:30 WARNING No Telegram token/chat ID in C:\Users\Frank\quant pro wth pre market\alert_secrets.env: skipping us_indices, derivatives. Watch list, GEX, session flow and zone flow tracking still run.
+2026-11-14 18:40:30 INFO Loading dashboard functions...
+2026-11-14 18:40:37 INFO Runner started: groups=watchlist, gex, session_flow, zone_flow_tracker, checking every 300s
+2026-11-14 18:41:34 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 71 -> Regime Mean-Reverting: 63 -> $ Risk = $10.00: 50 -> Leverage < 0.40x: 34
+2026-11-14 18:41:35 INFO watchlist: saved 34 match(es) for 2026-11-14: DYDX/USDT, GIGGLE/USDT, ZEN/USDT, PUMP/USDT, VIRTUAL/USDT, 龙虾/USDT, FIL/USDT, ORDI/USDT, SEI/USDT, 1000BONK/USDT, FARTCOIN/USDT, AR/USDT, NEIRO/USDT, HYPE/USDT, KAVA/USDT, OP/USDT, GALA/USDT, ONDO/USDT, 牛来/USDT, APT/USDT, GRT/USDT, PEOPLE/USDT, DASH/USDT, UNI/USDT, ZEC/USDT, ETHFI/USDT, LDO/USDT, VELVET/USDT, PENGU/USDT, PENDLE/USDT, VVV/USDT, COTI/USDT, GTC/USDT, PYTH/USDT
+2026-11-14 18:41:38 INFO gex: BTC exists, ETH saved
+2026-11-14 18:41:53 INFO session_flow: recorded 11/11 symbols
+2026-11-14 18:42:02 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 18:45:54 INFO session_flow: recorded 11/11 symbols
+2026-11-14 18:46:14 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 18:50:53 INFO session_flow: recorded 11/11 symbols
+2026-11-14 18:51:04 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 18:55:56 INFO session_flow: recorded 11/11 symbols
+2026-11-14 18:56:07 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 19:01:33 INFO session_flow: recorded 9/11 symbols; problems: {'ETH/USDT': 'no candles in session', 'ZEC/USDT': 'no candles in session'}
+2026-11-14 19:01:43 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 19:05:50 INFO session_flow: recorded 11/11 symbols
+2026-11-14 19:05:57 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 19:11:14 INFO session_flow: recorded 11/11 symbols
+2026-11-14 19:11:24 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 19:15:50 INFO session_flow: recorded 11/11 symbols
+2026-11-14 19:15:59 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 19:20:53 INFO session_flow: recorded 11/11 symbols
+2026-11-14 19:21:02 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 19:25:48 INFO session_flow: recorded 11/11 symbols
+2026-11-14 19:25:53 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 19:30:59 INFO session_flow: recorded 11/11 symbols
+2026-11-14 19:31:13 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 19:35:52 INFO session_flow: recorded 11/11 symbols
+2026-11-14 19:35:58 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 20:09:08 ERROR watchlist: check failed
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connection.py", line 571, in getresponse
+    httplib_response = super().getresponse()
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\http\client.py", line 1450, in getresponse
+    response.begin()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\http\client.py", line 336, in begin
+    version, status, reason = self._read_status()
+                              ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\http\client.py", line 297, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\socket.py", line 725, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\ssl.py", line 1304, in recv_into
+    return self.read(nbytes, buffer)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\ssl.py", line 1138, in read
+    return self._sslobj.read(len, buffer)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+TimeoutError: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\adapters.py", line 644, in send
+    resp = conn.urlopen(
+        method=request.method,
+    ...<9 lines>...
+        chunked=chunked,
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 842, in urlopen
+    retries = retries.increment(
+        method, url, error=new_e, _pool=self, _stacktrace=sys.exc_info()[2]
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\util\retry.py", line 498, in increment
+    raise reraise(type(error), error, _stacktrace)
+          ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\util\util.py", line 39, in reraise
+    raise value
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 788, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 536, in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 367, in _raise_timeout
+    raise ReadTimeoutError(
+        self, url, f"Read timed out. (read timeout={timeout_value})"
+    ) from err
+urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='fapi.binance.com', port=443): Read timed out. (read timeout=10.0)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 599, in fetch
+    response = self.session.request(
+        method,
+    ...<6 lines>...
+        files=files
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\adapters.py", line 690, in send
+    raise ReadTimeout(e, request=request)
+requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='fapi.binance.com', port=443): Read timed out. (read timeout=10.0)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\quant pro wth pre market\alert_runner.py", line 321, in run_cycle
+    save_watchlist(group, dash, panel, dry_run)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\quant pro wth pre market\alert_runner.py", line 247, in save_watchlist
+    symbols = top_usdm_symbols(int(group['scan_size']))
+  File "C:\Users\Frank\quant pro wth pre market\binance_futures.py", line 126, in top_usdm_symbols
+    tickers = client.fetch_tickers()
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\binance.py", line 4767, in fetch_tickers
+    response = self.fapiPublicGetTicker24hr(params)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\types.py", line 43, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\binance.py", line 12476, in request
+    response = self.fetch2(path, api, method, params, headers, body, config)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 5686, in fetch2
+    raise e
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 5669, in fetch2
+    response = self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 632, in fetch
+    raise RequestTimeout(details) from e
+ccxt.base.errors.RequestTimeout: binanceusdm GET https://fapi.binance.com/fapi/v1/ticker/24hr
+2026-11-14 20:09:08 INFO gex: BTC failed: HTTPSConnectionPool(host='www.deribit.com', port=443): Max retries exceeded with url: /api/v2/public/get_book_summary_by_currency?currency=BTC&kind=option (Caused by NameResolutionError("HTTPSConnection(host='www.deribit.com', port=443): Failed to resolve 'www.deribit.com' ([Errno 11001] getaddrinfo failed)")), ETH failed: HTTPSConnectionPool(host='www.deribit.com', port=443): Max retries exceeded with url: /api/v2/public/get_book_summary_by_currency?currency=ETH&kind=option (Caused by NameResolutionError("HTTPSConnection(host='www.deribit.com', port=443): Failed to resolve 'www.deribit.com' ([Errno 11001] getaddrinfo failed)"))
+2026-11-14 20:09:08 INFO session_flow: recorded 1/1 symbols
+2026-11-14 20:09:10 INFO zone_flow_tracker: 0 new signal(s); problems: {'BTC/USDT 5m': 'not enough candles', 'BTC/USDT 15m': 'not enough candles', 'BTC/USDT 1h': 'not enough candles', 'BTC/USDT 4h': 'not enough candles', 'BTC/USDT 1d': 'not enough candles'}
+2026-11-14 20:14:11 INFO session_flow: recorded 11/11 symbols
+2026-11-14 20:14:20 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-14 20:19:15 INFO session_flow: recorded 11/11 symbols
+2026-11-14 20:19:26 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 20:24:09 INFO session_flow: recorded 11/11 symbols
+2026-11-14 20:24:14 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 20:29:09 INFO session_flow: recorded 11/11 symbols
+2026-11-14 20:29:19 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 20:34:11 INFO session_flow: recorded 11/11 symbols
+2026-11-14 20:34:16 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 20:39:12 INFO session_flow: recorded 11/11 symbols
+2026-11-14 20:39:22 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 20:44:10 INFO session_flow: recorded 11/11 symbols
+2026-11-14 20:44:15 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 20:49:16 INFO session_flow: recorded 11/11 symbols
+2026-11-14 20:49:26 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 20:54:13 INFO session_flow: recorded 11/11 symbols
+2026-11-14 20:54:21 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 20:59:14 INFO session_flow: recorded 11/11 symbols
+2026-11-14 20:59:25 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 21:04:22 INFO session_flow: recorded 10/11 symbols; problems: {'AKE/USDT': 'no candles in session'}
+2026-11-14 21:04:30 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 21:09:45 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 69 -> Regime Mean-Reverting: 59 -> $ Risk = $10.00: 49 -> Leverage < 0.40x: 47
+2026-11-14 21:09:45 INFO watchlist: saved 47 match(es) for 2026-11-14: DYDX/USDT, PARTI/USDT, ZEN/USDT, PUMP/USDT, FIL/USDT, CC/USDT, GIGGLE/USDT, VIRTUAL/USDT, AVAX/USDT, ORDI/USDT, 龙虾/USDT, 1000BONK/USDT, FARTCOIN/USDT, AR/USDT, ALLO/USDT, ASTER/USDT, SEI/USDT, BLESS/USDT, 1000FLOKI/USDT, ZRO/USDT, HYPE/USDT, NEIRO/USDT, XMR/USDT, KAVA/USDT, OP/USDT, 牛来/USDT, GALA/USDT, ONDO/USDT, LINK/USDT, DASH/USDT, ETHFI/USDT, UNI/USDT, XLM/USDT, ADA/USDT, APT/USDT, PEOPLE/USDT, TRB/USDT, 币安人生/USDT, PENDLE/USDT, LDO/USDT, IOTA/USDT, MORPHO/USDT, PENGU/USDT, VVV/USDT, CHZ/USDT, COTI/USDT, JUP/USDT
+2026-11-14 21:09:47 INFO gex: BTC saved, ETH saved
+2026-11-14 21:10:01 INFO session_flow: recorded 11/11 symbols
+2026-11-14 21:10:12 INFO zone_flow_tracker: 2 new signal(s)
+2026-11-14 21:14:09 INFO session_flow: recorded 11/11 symbols
+2026-11-14 21:14:14 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 21:19:13 INFO session_flow: recorded 11/11 symbols
+2026-11-14 21:19:22 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-14 21:24:08 INFO session_flow: recorded 11/11 symbols
+2026-11-14 21:24:12 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 21:29:13 INFO session_flow: recorded 11/11 symbols
+2026-11-14 21:29:21 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 21:34:10 INFO session_flow: recorded 11/11 symbols
+2026-11-14 21:34:16 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 21:39:08 INFO session_flow: recorded 11/11 symbols
+2026-11-14 21:39:16 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 21:44:07 INFO session_flow: recorded 11/11 symbols
+2026-11-14 21:44:12 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 21:49:09 INFO session_flow: recorded 11/11 symbols
+2026-11-14 21:49:18 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 21:54:09 INFO session_flow: recorded 11/11 symbols
+2026-11-14 21:54:14 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 21:59:09 INFO session_flow: recorded 11/11 symbols
+2026-11-14 21:59:18 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 22:04:06 INFO session_flow: recorded 11/11 symbols
+2026-11-14 22:04:10 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-14 22:09:36 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 64 -> Regime Mean-Reverting: 52 -> $ Risk = $10.00: 46 -> Leverage < 0.40x: 45
+2026-11-14 22:09:36 INFO watchlist: saved 45 match(es) for 2026-11-14: DYDX/USDT, ZEN/USDT, FIL/USDT, PUMP/USDT, CC/USDT, VIRTUAL/USDT, GIGGLE/USDT, AVAX/USDT, ORDI/USDT, 龙虾/USDT, 1000BONK/USDT, ZRO/USDT, ALLO/USDT, FARTCOIN/USDT, ALGO/USDT, AR/USDT, SEI/USDT, GALA/USDT, ASTER/USDT, 1000FLOKI/USDT, KAVA/USDT, HYPE/USDT, NEIRO/USDT, XMR/USDT, OP/USDT, ONDO/USDT, DASH/USDT, LINK/USDT, 牛来/USDT, UNI/USDT, ETHFI/USDT, XLM/USDT, APT/USDT, ADA/USDT, PEOPLE/USDT, TRB/USDT, PENGU/USDT, LDO/USDT, PENDLE/USDT, MORPHO/USDT, JUP/USDT, VVV/USDT, CHZ/USDT, 币安人生/USDT, COTI/USDT
+2026-11-14 22:09:38 INFO gex: BTC saved, ETH saved
+2026-11-14 22:09:47 INFO session_flow: recorded 11/11 symbols
+2026-11-14 22:09:55 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 22:14:08 INFO session_flow: recorded 11/11 symbols
+2026-11-14 22:14:13 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 22:19:11 INFO session_flow: recorded 11/11 symbols
+2026-11-14 22:19:19 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 22:24:06 INFO session_flow: recorded 11/11 symbols
+2026-11-14 22:24:10 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 22:29:08 INFO session_flow: recorded 11/11 symbols
+2026-11-14 22:29:16 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-14 22:34:06 INFO session_flow: recorded 11/11 symbols
+2026-11-14 22:34:11 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 03:10:42 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 11 -> Regime Mean-Reverting: 4 -> $ Risk = $10.00: 4 -> Leverage < 0.40x: 4
+2026-11-15 03:10:42 INFO watchlist: saved 4 match(es) for 2026-11-15: ALLO/USDT, ZEC/USDT, 币安人生/USDT, VVV/USDT
+2026-11-15 03:10:44 INFO gex: BTC exists, ETH saved
+2026-11-15 03:10:55 INFO session_flow: recorded 11/11 symbols
+2026-11-15 03:11:07 INFO zone_flow_tracker: 12 new signal(s)
+2026-11-15 03:15:04 INFO session_flow: recorded 11/11 symbols
+2026-11-15 03:15:10 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 03:20:10 INFO session_flow: recorded 11/11 symbols
+2026-11-15 03:20:19 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 03:25:03 INFO session_flow: recorded 11/11 symbols
+2026-11-15 03:25:08 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 04:17:35 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 13 -> Regime Mean-Reverting: 7 -> $ Risk = $10.00: 7 -> Leverage < 0.40x: 7
+2026-11-15 04:17:35 INFO watchlist: saved 7 match(es) for 2026-11-15: AT/USDT, GIGGLE/USDT, ALLO/USDT, ZEC/USDT, 币安人生/USDT, VVV/USDT, PYTH/USDT
+2026-11-15 04:17:38 INFO gex: BTC exists, ETH saved
+2026-11-15 04:17:58 INFO session_flow: recorded 11/11 symbols
+2026-11-15 04:18:11 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-15 04:22:02 INFO session_flow: recorded 11/11 symbols
+2026-11-15 04:22:07 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 04:27:14 INFO session_flow: recorded 11/11 symbols
+2026-11-15 04:27:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 04:32:05 INFO session_flow: recorded 11/11 symbols
+2026-11-15 04:32:15 INFO zone_flow_tracker: 2 new signal(s)
+2026-11-15 04:37:08 INFO session_flow: recorded 11/11 symbols
+2026-11-15 04:37:26 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 04:42:07 INFO session_flow: recorded 11/11 symbols
+2026-11-15 04:42:15 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 04:47:50 INFO session_flow: recorded 10/11 symbols; problems: {'BTC/USDT': 'no candles in session'}
+2026-11-15 04:48:17 INFO zone_flow_tracker: 0 new signal(s); problems: {'BTC/USDT 5m': 'not enough candles'}
+2026-11-15 04:52:05 INFO session_flow: recorded 11/11 symbols
+2026-11-15 04:52:15 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 04:57:22 INFO session_flow: recorded 11/11 symbols
+2026-11-15 04:57:39 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 05:02:07 INFO session_flow: recorded 11/11 symbols
+2026-11-15 05:02:15 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 05:07:16 INFO session_flow: recorded 11/11 symbols
+2026-11-15 05:07:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 05:12:07 INFO session_flow: recorded 11/11 symbols
+2026-11-15 05:12:15 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 05:17:55 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 10 -> Regime Mean-Reverting: 4 -> $ Risk = $10.00: 4 -> Leverage < 0.40x: 4
+2026-11-15 05:17:55 INFO watchlist: saved 4 match(es) for 2026-11-15: ALLO/USDT, ZEC/USDT, 币安人生/USDT, VVV/USDT
+2026-11-15 05:17:58 INFO gex: BTC exists, ETH saved
+2026-11-15 05:18:30 INFO session_flow: recorded 11/11 symbols
+2026-11-15 05:18:59 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 05:22:12 INFO session_flow: recorded 11/11 symbols
+2026-11-15 05:22:21 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 05:27:25 INFO session_flow: recorded 11/11 symbols
+2026-11-15 05:27:50 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 05:32:00 INFO session_flow: recorded 11/11 symbols
+2026-11-15 05:32:04 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 05:37:26 INFO session_flow: recorded 11/11 symbols
+2026-11-15 05:37:40 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 05:42:03 INFO session_flow: recorded 11/11 symbols
+2026-11-15 05:42:09 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 05:47:16 INFO session_flow: recorded 11/11 symbols
+2026-11-15 05:47:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 05:52:02 INFO session_flow: recorded 11/11 symbols
+2026-11-15 05:52:08 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 05:57:13 INFO session_flow: recorded 11/11 symbols
+2026-11-15 05:57:24 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 06:02:04 INFO session_flow: recorded 11/11 symbols
+2026-11-15 06:02:09 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 06:07:06 INFO session_flow: recorded 11/11 symbols
+2026-11-15 06:07:30 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 06:12:03 INFO session_flow: recorded 11/11 symbols
+2026-11-15 06:12:07 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 06:17:45 INFO watchlist: 199/200 scanned; Verdict LONG / SHORT: 17 -> Regime Mean-Reverting: 9 -> $ Risk = $10.00: 8 -> Leverage < 0.40x: 8
+2026-11-15 06:17:45 INFO watchlist: saved 8 match(es) for 2026-11-15: DYDX/USDT, AT/USDT, ALLO/USDT, GIGGLE/USDT, BLESS/USDT, ZEC/USDT, VVV/USDT, PYTH/USDT
+2026-11-15 06:17:47 INFO gex: BTC exists, ETH saved
+2026-11-15 06:18:12 INFO session_flow: recorded 11/11 symbols
+2026-11-15 06:18:25 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 06:22:01 INFO session_flow: recorded 11/11 symbols
+2026-11-15 06:22:06 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 06:27:03 INFO session_flow: recorded 11/11 symbols
+2026-11-15 06:27:12 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 06:32:00 INFO session_flow: recorded 11/11 symbols
+2026-11-15 06:32:04 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 06:37:06 INFO session_flow: recorded 11/11 symbols
+2026-11-15 06:37:16 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 06:42:02 INFO session_flow: recorded 11/11 symbols
+2026-11-15 06:42:06 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 06:47:04 INFO session_flow: recorded 11/11 symbols
+2026-11-15 06:47:14 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 06:52:03 INFO session_flow: recorded 11/11 symbols
+2026-11-15 06:52:08 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 06:57:03 INFO session_flow: recorded 11/11 symbols
+2026-11-15 06:57:12 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 07:02:01 INFO session_flow: recorded 11/11 symbols
+2026-11-15 07:02:06 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 07:07:06 INFO session_flow: recorded 11/11 symbols
+2026-11-15 07:07:15 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 07:12:03 INFO session_flow: recorded 11/11 symbols
+2026-11-15 07:12:06 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 07:17:39 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 13 -> Regime Mean-Reverting: 8 -> $ Risk = $10.00: 7 -> Leverage < 0.40x: 7
+2026-11-15 07:17:39 INFO watchlist: saved 7 match(es) for 2026-11-15: AT/USDT, GIGGLE/USDT, BLESS/USDT, NEIRO/USDT, ZEC/USDT, 币安人生/USDT, VVV/USDT
+2026-11-15 07:17:41 INFO gex: BTC saved, ETH saved
+2026-11-15 07:17:58 INFO session_flow: recorded 11/11 symbols
+2026-11-15 07:18:09 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 07:22:03 INFO session_flow: recorded 11/11 symbols
+2026-11-15 07:22:08 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 07:27:04 INFO session_flow: recorded 11/11 symbols
+2026-11-15 07:27:15 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 07:32:04 INFO session_flow: recorded 11/11 symbols
+2026-11-15 07:32:08 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 07:37:05 INFO session_flow: recorded 11/11 symbols
+2026-11-15 07:37:14 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 07:42:02 INFO session_flow: recorded 11/11 symbols
+2026-11-15 07:42:08 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 07:47:05 INFO session_flow: recorded 11/11 symbols
+2026-11-15 07:47:14 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 07:52:02 INFO session_flow: recorded 11/11 symbols
+2026-11-15 07:52:06 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 07:57:05 INFO session_flow: recorded 11/11 symbols
+2026-11-15 07:57:14 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 08:02:02 INFO session_flow: recorded 11/11 symbols
+2026-11-15 08:02:06 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 08:07:05 INFO session_flow: recorded 11/11 symbols
+2026-11-15 08:07:13 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 08:12:02 INFO session_flow: recorded 11/11 symbols
+2026-11-15 08:12:08 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 08:17:50 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 27 -> Regime Mean-Reverting: 18 -> $ Risk = $10.00: 15 -> Leverage < 0.40x: 15
+2026-11-15 08:17:50 INFO watchlist: saved 15 match(es) for 2026-11-15: AT/USDT, DYDX/USDT, PUMP/USDT, ORDI/USDT, FIL/USDT, AVAX/USDT, GALA/USDT, GIGGLE/USDT, NEIRO/USDT, ALGO/USDT, PENGU/USDT, LDO/USDT, VVV/USDT, APT/USDT, ADA/USDT
+2026-11-15 08:17:52 INFO gex: BTC exists, ETH saved
+2026-11-15 08:18:10 INFO session_flow: recorded 11/11 symbols
+2026-11-15 08:18:19 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 08:22:08 INFO session_flow: recorded 11/11 symbols
+2026-11-15 08:22:13 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 08:27:04 INFO session_flow: recorded 11/11 symbols
+2026-11-15 08:27:14 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 08:32:04 INFO session_flow: recorded 11/11 symbols
+2026-11-15 08:32:10 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 08:37:07 INFO session_flow: recorded 11/11 symbols
+2026-11-15 08:37:16 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 08:42:02 INFO session_flow: recorded 11/11 symbols
+2026-11-15 08:42:07 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 08:47:07 INFO session_flow: recorded 11/11 symbols
+2026-11-15 08:47:24 INFO zone_flow_tracker: 2 new signal(s)
+2026-11-15 08:52:03 INFO session_flow: recorded 11/11 symbols
+2026-11-15 08:52:08 INFO zone_flow_tracker: 0 new signal(s); problems: {'BTC/USDT 15m': "failed: [WinError 5] Access is denied: 'C:\\\\Users\\\\Frank\\\\quant pro wth pre market\\\\zone_flow_tracker_log.csv.tmp' -> 'C:\\\\Users\\\\Frank\\\\quant pro wth pre market\\\\zone_flow_tracker_log.csv'"}
+2026-11-15 08:57:07 INFO session_flow: recorded 11/11 symbols
+2026-11-15 08:57:18 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 09:02:04 INFO session_flow: recorded 11/11 symbols
+2026-11-15 09:02:09 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 09:06:53 INFO session_flow: recorded 1/1 symbols
+2026-11-15 09:06:55 INFO zone_flow_tracker: 0 new signal(s); problems: {'BTC/USDT 5m': 'not enough candles', 'BTC/USDT 15m': 'not enough candles', 'BTC/USDT 1h': 'not enough candles', 'BTC/USDT 4h': 'not enough candles', 'BTC/USDT 1d': 'not enough candles'}
+2026-11-15 11:42:27 ERROR watchlist: check failed
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+        (self._dns_host, self.port),
+    ...<2 lines>...
+        socket_options=self.socket_options,
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\util\connection.py", line 60, in create_connection
+    for res in socket.getaddrinfo(host, port, family, socket.SOCK_STREAM):
+               ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\socket.py", line 983, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 788, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 488, in _make_request
+    raise new_e
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 1106, in _validate_conn
+    conn.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ~~~~~~~~~~~~~~^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connection.py", line 211, in _new_conn
+    raise NameResolutionError(self.host, self, e) from e
+urllib3.exceptions.NameResolutionError: HTTPSConnection(host='fapi.binance.com', port=443): Failed to resolve 'fapi.binance.com' ([Errno 11001] getaddrinfo failed)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\adapters.py", line 644, in send
+    resp = conn.urlopen(
+        method=request.method,
+    ...<9 lines>...
+        chunked=chunked,
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 842, in urlopen
+    retries = retries.increment(
+        method, url, error=new_e, _pool=self, _stacktrace=sys.exc_info()[2]
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\util\retry.py", line 543, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/ticker/24hr (Caused by NameResolutionError("HTTPSConnection(host='fapi.binance.com', port=443): Failed to resolve 'fapi.binance.com' ([Errno 11001] getaddrinfo failed)"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 599, in fetch
+    response = self.session.request(
+        method,
+    ...<6 lines>...
+        files=files
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\adapters.py", line 677, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/ticker/24hr (Caused by NameResolutionError("HTTPSConnection(host='fapi.binance.com', port=443): Failed to resolve 'fapi.binance.com' ([Errno 11001] getaddrinfo failed)"))
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\quant pro wth pre market\alert_runner.py", line 321, in run_cycle
+    save_watchlist(group, dash, panel, dry_run)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\quant pro wth pre market\alert_runner.py", line 247, in save_watchlist
+    symbols = top_usdm_symbols(int(group['scan_size']))
+  File "C:\Users\Frank\quant pro wth pre market\binance_futures.py", line 126, in top_usdm_symbols
+    tickers = client.fetch_tickers()
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\binance.py", line 4767, in fetch_tickers
+    response = self.fapiPublicGetTicker24hr(params)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\types.py", line 43, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\binance.py", line 12476, in request
+    response = self.fetch2(path, api, method, params, headers, body, config)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 5686, in fetch2
+    raise e
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 5669, in fetch2
+    response = self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 655, in fetch
+    raise NetworkError(details) from e
+ccxt.base.errors.NetworkError: binanceusdm GET https://fapi.binance.com/fapi/v1/ticker/24hr
+2026-11-15 11:42:27 INFO gex: BTC failed: HTTPSConnectionPool(host='www.deribit.com', port=443): Max retries exceeded with url: /api/v2/public/get_book_summary_by_currency?currency=BTC&kind=option (Caused by NameResolutionError("HTTPSConnection(host='www.deribit.com', port=443): Failed to resolve 'www.deribit.com' ([Errno 11001] getaddrinfo failed)")), ETH failed: HTTPSConnectionPool(host='www.deribit.com', port=443): Max retries exceeded with url: /api/v2/public/get_book_summary_by_currency?currency=ETH&kind=option (Caused by NameResolutionError("HTTPSConnection(host='www.deribit.com', port=443): Failed to resolve 'www.deribit.com' ([Errno 11001] getaddrinfo failed)"))
+2026-11-15 11:42:29 INFO session_flow: recorded 1/1 symbols
+2026-11-15 11:42:31 INFO zone_flow_tracker: 0 new signal(s); problems: {'BTC/USDT 5m': 'not enough candles', 'BTC/USDT 15m': 'not enough candles', 'BTC/USDT 1h': 'not enough candles', 'BTC/USDT 4h': 'not enough candles', 'BTC/USDT 1d': 'not enough candles'}
+2026-11-15 11:47:27 INFO session_flow: recorded 1/1 symbols
+2026-11-15 11:47:29 INFO zone_flow_tracker: 0 new signal(s); problems: {'BTC/USDT 5m': 'not enough candles', 'BTC/USDT 15m': 'not enough candles', 'BTC/USDT 1h': 'not enough candles', 'BTC/USDT 4h': 'not enough candles', 'BTC/USDT 1d': 'not enough candles'}
+2026-11-15 12:06:26 INFO session_flow: recorded 1/1 symbols
+2026-11-15 12:06:28 INFO zone_flow_tracker: 0 new signal(s); problems: {'BTC/USDT 5m': 'not enough candles', 'BTC/USDT 15m': 'not enough candles', 'BTC/USDT 1h': 'not enough candles', 'BTC/USDT 4h': 'not enough candles', 'BTC/USDT 1d': 'not enough candles'}
+2026-11-15 12:11:54 INFO session_flow: recorded 11/11 symbols
+2026-11-15 12:12:03 INFO zone_flow_tracker: 5 new signal(s)
+2026-11-15 12:16:35 INFO session_flow: recorded 11/11 symbols
+2026-11-15 12:16:39 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 12:21:37 INFO session_flow: recorded 11/11 symbols
+2026-11-15 12:21:45 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 12:26:35 INFO session_flow: recorded 11/11 symbols
+2026-11-15 12:26:40 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 12:31:37 INFO session_flow: recorded 11/11 symbols
+2026-11-15 12:31:45 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 12:36:34 INFO session_flow: recorded 11/11 symbols
+2026-11-15 12:36:39 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 12:41:35 INFO session_flow: recorded 11/11 symbols
+2026-11-15 12:41:43 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 12:46:59 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 19 -> Regime Mean-Reverting: 14 -> $ Risk = $10.00: 13 -> Leverage < 0.40x: 12
+2026-11-15 12:46:59 INFO watchlist: saved 12 match(es) for 2026-11-15: AT/USDT, CT/USDT, HYPE/USDT, ALLO/USDT, TAC/USDT, 4/USDT, ZEC/USDT, BLESS/USDT, 币安人生/USDT, QNT/USDT, VVV/USDT, GTC/USDT
+2026-11-15 12:47:01 INFO gex: BTC exists, ETH saved
+2026-11-15 12:47:13 INFO session_flow: recorded 11/11 symbols
+2026-11-15 12:47:28 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 12:51:33 INFO session_flow: recorded 11/11 symbols
+2026-11-15 12:51:38 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 12:56:36 INFO session_flow: recorded 11/11 symbols
+2026-11-15 12:56:44 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 13:01:34 INFO session_flow: recorded 11/11 symbols
+2026-11-15 13:01:38 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 13:06:37 INFO session_flow: recorded 11/11 symbols
+2026-11-15 13:06:44 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 13:11:34 INFO session_flow: recorded 11/11 symbols
+2026-11-15 13:11:38 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 13:16:36 INFO session_flow: recorded 1/1 symbols
+2026-11-15 13:16:38 INFO zone_flow_tracker: 0 new signal(s); problems: {'BTC/USDT 5m': 'not enough candles', 'BTC/USDT 15m': 'not enough candles', 'BTC/USDT 1h': 'not enough candles', 'BTC/USDT 4h': 'not enough candles', 'BTC/USDT 1d': 'not enough candles'}
+2026-11-15 13:21:35 INFO session_flow: recorded 11/11 symbols
+2026-11-15 13:21:42 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 13:26:37 INFO session_flow: recorded 11/11 symbols
+2026-11-15 13:26:44 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 13:31:40 INFO session_flow: recorded 11/11 symbols
+2026-11-15 13:31:52 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 13:36:37 INFO session_flow: recorded 11/11 symbols
+2026-11-15 13:36:43 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 13:41:34 INFO session_flow: recorded 11/11 symbols
+2026-11-15 13:41:47 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 13:47:09 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 20 -> Regime Mean-Reverting: 14 -> $ Risk = $10.00: 14 -> Leverage < 0.40x: 12
+2026-11-15 13:47:09 INFO watchlist: saved 12 match(es) for 2026-11-15: AT/USDT, CT/USDT, RESOLV/USDT, HYPE/USDT, ALLO/USDT, 4/USDT, ZEC/USDT, 币安人生/USDT, BLESS/USDT, GTC/USDT, QNT/USDT, SAGA/USDT
+2026-11-15 13:47:12 INFO gex: BTC exists, ETH saved
+2026-11-15 13:47:22 INFO session_flow: recorded 11/11 symbols
+2026-11-15 13:47:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 13:51:38 INFO session_flow: recorded 11/11 symbols
+2026-11-15 13:51:48 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 13:56:41 INFO session_flow: recorded 11/11 symbols
+2026-11-15 13:56:55 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 14:01:44 INFO session_flow: recorded 11/11 symbols
+2026-11-15 14:01:50 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-15 14:06:42 INFO session_flow: recorded 11/11 symbols
+2026-11-15 14:06:51 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 14:11:39 INFO session_flow: recorded 11/11 symbols
+2026-11-15 14:11:45 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 14:16:38 INFO session_flow: recorded 11/11 symbols
+2026-11-15 14:16:48 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 15:08:22 ERROR watchlist: check failed
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connection.py", line 571, in getresponse
+    httplib_response = super().getresponse()
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\http\client.py", line 1450, in getresponse
+    response.begin()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\http\client.py", line 336, in begin
+    version, status, reason = self._read_status()
+                              ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\http\client.py", line 297, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\socket.py", line 725, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\ssl.py", line 1304, in recv_into
+    return self.read(nbytes, buffer)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\ssl.py", line 1138, in read
+    return self._sslobj.read(len, buffer)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+TimeoutError: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\adapters.py", line 644, in send
+    resp = conn.urlopen(
+        method=request.method,
+    ...<9 lines>...
+        chunked=chunked,
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 842, in urlopen
+    retries = retries.increment(
+        method, url, error=new_e, _pool=self, _stacktrace=sys.exc_info()[2]
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\util\retry.py", line 498, in increment
+    raise reraise(type(error), error, _stacktrace)
+          ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\util\util.py", line 39, in reraise
+    raise value
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 788, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 536, in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 367, in _raise_timeout
+    raise ReadTimeoutError(
+        self, url, f"Read timed out. (read timeout={timeout_value})"
+    ) from err
+urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='fapi.binance.com', port=443): Read timed out. (read timeout=10.0)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 599, in fetch
+    response = self.session.request(
+        method,
+    ...<6 lines>...
+        files=files
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\adapters.py", line 690, in send
+    raise ReadTimeout(e, request=request)
+requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='fapi.binance.com', port=443): Read timed out. (read timeout=10.0)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\quant pro wth pre market\alert_runner.py", line 321, in run_cycle
+    save_watchlist(group, dash, panel, dry_run)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\quant pro wth pre market\alert_runner.py", line 247, in save_watchlist
+    symbols = top_usdm_symbols(int(group['scan_size']))
+  File "C:\Users\Frank\quant pro wth pre market\binance_futures.py", line 126, in top_usdm_symbols
+    tickers = client.fetch_tickers()
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\binance.py", line 4767, in fetch_tickers
+    response = self.fapiPublicGetTicker24hr(params)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\types.py", line 43, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\binance.py", line 12476, in request
+    response = self.fetch2(path, api, method, params, headers, body, config)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 5686, in fetch2
+    raise e
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 5669, in fetch2
+    response = self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 632, in fetch
+    raise RequestTimeout(details) from e
+ccxt.base.errors.RequestTimeout: binanceusdm GET https://fapi.binance.com/fapi/v1/ticker/24hr
+2026-11-15 15:08:24 INFO gex: BTC saved, ETH saved
+2026-11-15 15:08:36 INFO session_flow: recorded 11/11 symbols
+2026-11-15 15:08:44 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-15 15:13:24 INFO session_flow: recorded 11/11 symbols
+2026-11-15 15:13:29 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 15:18:24 INFO session_flow: recorded 11/11 symbols
+2026-11-15 15:18:34 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 15:23:24 INFO session_flow: recorded 11/11 symbols
+2026-11-15 15:23:30 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 15:28:26 INFO session_flow: recorded 11/11 symbols
+2026-11-15 15:28:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 15:33:26 INFO session_flow: recorded 11/11 symbols
+2026-11-15 15:33:44 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 15:38:39 INFO session_flow: recorded 11/11 symbols
+2026-11-15 15:38:52 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 15:43:28 INFO session_flow: recorded 11/11 symbols
+2026-11-15 15:43:38 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 15:48:38 INFO session_flow: recorded 11/11 symbols
+2026-11-15 15:48:51 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 15:53:20 INFO session_flow: recorded 11/11 symbols
+2026-11-15 15:53:24 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 15:58:22 INFO session_flow: recorded 11/11 symbols
+2026-11-15 15:58:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 17:01:07 ERROR watchlist: check failed
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+        (self._dns_host, self.port),
+    ...<2 lines>...
+        socket_options=self.socket_options,
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\util\connection.py", line 60, in create_connection
+    for res in socket.getaddrinfo(host, port, family, socket.SOCK_STREAM):
+               ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\socket.py", line 983, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 788, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 488, in _make_request
+    raise new_e
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 1106, in _validate_conn
+    conn.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ~~~~~~~~~~~~~~^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connection.py", line 211, in _new_conn
+    raise NameResolutionError(self.host, self, e) from e
+urllib3.exceptions.NameResolutionError: HTTPSConnection(host='fapi.binance.com', port=443): Failed to resolve 'fapi.binance.com' ([Errno 11001] getaddrinfo failed)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\adapters.py", line 644, in send
+    resp = conn.urlopen(
+        method=request.method,
+    ...<9 lines>...
+        chunked=chunked,
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 842, in urlopen
+    retries = retries.increment(
+        method, url, error=new_e, _pool=self, _stacktrace=sys.exc_info()[2]
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\util\retry.py", line 543, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/ticker/24hr (Caused by NameResolutionError("HTTPSConnection(host='fapi.binance.com', port=443): Failed to resolve 'fapi.binance.com' ([Errno 11001] getaddrinfo failed)"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 599, in fetch
+    response = self.session.request(
+        method,
+    ...<6 lines>...
+        files=files
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\adapters.py", line 677, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPSConnectionPool(host='fapi.binance.com', port=443): Max retries exceeded with url: /fapi/v1/ticker/24hr (Caused by NameResolutionError("HTTPSConnection(host='fapi.binance.com', port=443): Failed to resolve 'fapi.binance.com' ([Errno 11001] getaddrinfo failed)"))
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\quant pro wth pre market\alert_runner.py", line 321, in run_cycle
+    save_watchlist(group, dash, panel, dry_run)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\quant pro wth pre market\alert_runner.py", line 247, in save_watchlist
+    symbols = top_usdm_symbols(int(group['scan_size']))
+  File "C:\Users\Frank\quant pro wth pre market\binance_futures.py", line 126, in top_usdm_symbols
+    tickers = client.fetch_tickers()
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\binance.py", line 4767, in fetch_tickers
+    response = self.fapiPublicGetTicker24hr(params)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\types.py", line 43, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\binance.py", line 12476, in request
+    response = self.fetch2(path, api, method, params, headers, body, config)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 5686, in fetch2
+    raise e
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 5669, in fetch2
+    response = self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 655, in fetch
+    raise NetworkError(details) from e
+ccxt.base.errors.NetworkError: binanceusdm GET https://fapi.binance.com/fapi/v1/ticker/24hr
+2026-11-15 17:01:07 INFO gex: BTC failed: HTTPSConnectionPool(host='www.deribit.com', port=443): Max retries exceeded with url: /api/v2/public/get_book_summary_by_currency?currency=BTC&kind=option (Caused by NameResolutionError("HTTPSConnection(host='www.deribit.com', port=443): Failed to resolve 'www.deribit.com' ([Errno 11001] getaddrinfo failed)")), ETH failed: HTTPSConnectionPool(host='www.deribit.com', port=443): Max retries exceeded with url: /api/v2/public/get_book_summary_by_currency?currency=ETH&kind=option (Caused by NameResolutionError("HTTPSConnection(host='www.deribit.com', port=443): Failed to resolve 'www.deribit.com' ([Errno 11001] getaddrinfo failed)"))
+2026-11-15 17:01:11 INFO session_flow: recorded 1/1 symbols
+2026-11-15 17:01:14 INFO zone_flow_tracker: 0 new signal(s); problems: {'BTC/USDT 5m': 'not enough candles', 'BTC/USDT 15m': 'not enough candles', 'BTC/USDT 1h': 'not enough candles', 'BTC/USDT 4h': 'not enough candles', 'BTC/USDT 1d': 'not enough candles'}
+2026-11-15 17:06:15 INFO session_flow: recorded 11/11 symbols
+2026-11-15 17:06:22 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 17:11:17 INFO session_flow: recorded 11/11 symbols
+2026-11-15 17:11:24 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-15 17:16:15 INFO session_flow: recorded 11/11 symbols
+2026-11-15 17:16:19 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 17:21:15 INFO session_flow: recorded 11/11 symbols
+2026-11-15 17:21:22 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 17:26:16 INFO session_flow: recorded 11/11 symbols
+2026-11-15 17:26:23 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 17:31:17 INFO session_flow: recorded 11/11 symbols
+2026-11-15 17:31:21 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 17:36:15 INFO session_flow: recorded 11/11 symbols
+2026-11-15 17:36:22 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 17:41:19 INFO session_flow: recorded 11/11 symbols
+2026-11-15 17:41:35 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 17:46:16 INFO session_flow: recorded 11/11 symbols
+2026-11-15 17:46:20 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 17:51:19 INFO session_flow: recorded 11/11 symbols
+2026-11-15 17:51:28 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 17:56:18 INFO session_flow: recorded 11/11 symbols
+2026-11-15 17:56:24 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 18:01:44 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 27 -> Regime Mean-Reverting: 21 -> $ Risk = $10.00: 16 -> Leverage < 0.40x: 14
+2026-11-15 18:01:44 INFO watchlist: saved 14 match(es) for 2026-11-15: 龙虾/USDT, PARTI/USDT, AT/USDT, PUMP/USDT, FIL/USDT, AR/USDT, OP/USDT, 牛来/USDT, MMT/USDT, ZRO/USDT, PENGU/USDT, APT/USDT, 4/USDT, 1000PEPE/USDT
+2026-11-15 18:01:46 INFO gex: BTC saved, ETH saved
+2026-11-15 18:01:55 INFO session_flow: recorded 11/11 symbols
+2026-11-15 18:02:03 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 18:06:17 INFO session_flow: recorded 11/11 symbols
+2026-11-15 18:06:21 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 18:11:18 INFO session_flow: recorded 11/11 symbols
+2026-11-15 18:11:26 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 18:16:18 INFO session_flow: recorded 11/11 symbols
+2026-11-15 18:16:33 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 18:21:17 INFO session_flow: recorded 11/11 symbols
+2026-11-15 18:21:23 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 18:26:17 INFO session_flow: recorded 11/11 symbols
+2026-11-15 18:26:28 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 18:31:18 INFO session_flow: recorded 11/11 symbols
+2026-11-15 18:31:21 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 18:36:18 INFO session_flow: recorded 11/11 symbols
+2026-11-15 18:36:27 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 18:41:17 INFO session_flow: recorded 11/11 symbols
+2026-11-15 18:41:22 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 18:46:21 INFO session_flow: recorded 11/11 symbols
+2026-11-15 18:46:29 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 18:51:16 INFO session_flow: recorded 11/11 symbols
+2026-11-15 18:51:22 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 18:56:19 INFO session_flow: recorded 11/11 symbols
+2026-11-15 18:56:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 19:03:18 ERROR watchlist: check failed
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 788, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connection.py", line 571, in getresponse
+    httplib_response = super().getresponse()
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\http\client.py", line 1450, in getresponse
+    response.begin()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\http\client.py", line 336, in begin
+    version, status, reason = self._read_status()
+                              ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\http\client.py", line 297, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\socket.py", line 725, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\ssl.py", line 1304, in recv_into
+    return self.read(nbytes, buffer)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\ssl.py", line 1138, in read
+    return self._sslobj.read(len, buffer)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\adapters.py", line 644, in send
+    resp = conn.urlopen(
+        method=request.method,
+    ...<9 lines>...
+        chunked=chunked,
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 842, in urlopen
+    retries = retries.increment(
+        method, url, error=new_e, _pool=self, _stacktrace=sys.exc_info()[2]
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\util\retry.py", line 498, in increment
+    raise reraise(type(error), error, _stacktrace)
+          ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\util\util.py", line 38, in reraise
+    raise value.with_traceback(tb)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 788, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\connection.py", line 571, in getresponse
+    httplib_response = super().getresponse()
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\http\client.py", line 1450, in getresponse
+    response.begin()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\http\client.py", line 336, in begin
+    version, status, reason = self._read_status()
+                              ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\http\client.py", line 297, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\socket.py", line 725, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\ssl.py", line 1304, in recv_into
+    return self.read(nbytes, buffer)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\ssl.py", line 1138, in read
+    return self._sslobj.read(len, buffer)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+urllib3.exceptions.ProtocolError: ('Connection aborted.', ConnectionResetError(10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 599, in fetch
+    response = self.session.request(
+        method,
+    ...<6 lines>...
+        files=files
+    )
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\adapters.py", line 659, in send
+    raise ConnectionError(err, request=request)
+requests.exceptions.ConnectionError: ('Connection aborted.', ConnectionResetError(10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None))
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\quant pro wth pre market\alert_runner.py", line 321, in run_cycle
+    save_watchlist(group, dash, panel, dry_run)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\quant pro wth pre market\alert_runner.py", line 247, in save_watchlist
+    symbols = top_usdm_symbols(int(group['scan_size']))
+  File "C:\Users\Frank\quant pro wth pre market\binance_futures.py", line 126, in top_usdm_symbols
+    tickers = client.fetch_tickers()
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\binance.py", line 4767, in fetch_tickers
+    response = self.fapiPublicGetTicker24hr(params)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\types.py", line 43, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\binance.py", line 12476, in request
+    response = self.fetch2(path, api, method, params, headers, body, config)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 5686, in fetch2
+    raise e
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 5669, in fetch2
+    response = self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\ccxt\base\exchange.py", line 655, in fetch
+    raise NetworkError(details) from e
+ccxt.base.errors.NetworkError: binanceusdm GET https://fapi.binance.com/fapi/v1/ticker/24hr
+2026-11-15 19:03:20 INFO gex: BTC saved, ETH saved
+2026-11-15 19:03:31 INFO session_flow: recorded 11/11 symbols
+2026-11-15 19:03:39 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 19:08:29 INFO session_flow: recorded 11/11 symbols
+2026-11-15 19:08:33 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 19:13:30 INFO session_flow: recorded 11/11 symbols
+2026-11-15 19:13:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 19:18:38 INFO session_flow: recorded 11/11 symbols
+2026-11-15 19:18:45 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 19:23:36 INFO session_flow: recorded 11/11 symbols
+2026-11-15 19:23:41 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 19:28:39 INFO session_flow: recorded 11/11 symbols
+2026-11-15 19:28:47 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 19:33:36 INFO session_flow: recorded 11/11 symbols
+2026-11-15 19:33:41 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 19:38:39 INFO session_flow: recorded 11/11 symbols
+2026-11-15 19:38:51 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 19:43:45 INFO session_flow: recorded 11/11 symbols
+2026-11-15 19:43:58 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 19:48:44 INFO session_flow: recorded 11/11 symbols
+2026-11-15 19:48:51 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 19:53:52 INFO session_flow: recorded 11/11 symbols
+2026-11-15 19:54:06 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 19:58:45 INFO session_flow: recorded 11/11 symbols
+2026-11-15 19:58:53 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 20:04:40 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 23 -> Regime Mean-Reverting: 20 -> $ Risk = $10.00: 16 -> Leverage < 0.40x: 14
+2026-11-15 20:04:40 INFO watchlist: saved 14 match(es) for 2026-11-15: 龙虾/USDT, PARTI/USDT, AT/USDT, ALLO/USDT, ASTER/USDT, FIL/USDT, AR/USDT, 牛来/USDT, ZRO/USDT, SAHARA/USDT, 4/USDT, 1000PEPE/USDT, GTC/USDT, SAGA/USDT
+2026-11-15 20:04:43 INFO gex: BTC exists, ETH saved
+2026-11-15 20:05:14 INFO session_flow: recorded 11/11 symbols
+2026-11-15 20:05:30 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 20:08:44 INFO session_flow: recorded 11/11 symbols
+2026-11-15 20:08:51 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 20:13:41 INFO session_flow: recorded 11/11 symbols
+2026-11-15 20:13:51 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 20:18:42 INFO session_flow: recorded 11/11 symbols
+2026-11-15 20:18:52 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 20:23:42 INFO session_flow: recorded 11/11 symbols
+2026-11-15 20:23:56 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 20:28:42 INFO session_flow: recorded 11/11 symbols
+2026-11-15 20:28:47 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 20:33:43 INFO session_flow: recorded 11/11 symbols
+2026-11-15 20:33:55 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 20:38:41 INFO session_flow: recorded 11/11 symbols
+2026-11-15 20:38:48 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 20:43:45 INFO session_flow: recorded 11/11 symbols
+2026-11-15 20:43:55 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 20:48:40 INFO session_flow: recorded 11/11 symbols
+2026-11-15 20:48:47 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 20:53:45 INFO session_flow: recorded 11/11 symbols
+2026-11-15 20:53:55 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 20:58:41 INFO session_flow: recorded 11/11 symbols
+2026-11-15 20:58:47 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 21:08:30 INFO watchlist: 130/200 scanned; Verdict LONG / SHORT: 14 -> Regime Mean-Reverting: 10 -> $ Risk = $10.00: 6 -> Leverage < 0.40x: 4
+2026-11-15 21:08:30 INFO watchlist: saved 4 match(es) for 2026-11-15: FARTCOIN/USDT, 牛来/USDT, 4/USDT, SLP/USDT
+2026-11-15 21:08:32 INFO gex: BTC saved, ETH saved
+2026-11-15 21:08:41 INFO session_flow: recorded 11/11 symbols
+2026-11-15 21:08:50 INFO zone_flow_tracker: 0 new signal(s); problems: {'BTC/USDT 1h': 'not enough candles'}
+2026-11-15 21:09:28 INFO session_flow: recorded 11/11 symbols
+2026-11-15 21:09:33 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 21:14:30 INFO session_flow: recorded 11/11 symbols
+2026-11-15 21:14:38 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 21:19:28 INFO session_flow: recorded 11/11 symbols
+2026-11-15 21:19:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 21:24:32 INFO session_flow: recorded 11/11 symbols
+2026-11-15 21:24:41 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 21:29:20 INFO session_flow: recorded 1/1 symbols
+2026-11-15 21:29:25 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 21:34:31 INFO session_flow: recorded 11/11 symbols
+2026-11-15 21:34:39 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 21:39:31 INFO session_flow: recorded 11/11 symbols
+2026-11-15 21:39:44 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 21:44:34 INFO session_flow: recorded 11/11 symbols
+2026-11-15 21:44:39 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 21:49:28 INFO session_flow: recorded 11/11 symbols
+2026-11-15 21:49:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 21:54:31 INFO session_flow: recorded 11/11 symbols
+2026-11-15 21:54:40 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 21:59:28 INFO session_flow: recorded 11/11 symbols
+2026-11-15 21:59:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 22:04:54 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 41 -> Regime Mean-Reverting: 35 -> $ Risk = $10.00: 33 -> Leverage < 0.40x: 12
+2026-11-15 22:04:54 INFO watchlist: saved 12 match(es) for 2026-11-15: 龙虾/USDT, AT/USDT, FARTCOIN/USDT, UNI/USDT, ZRO/USDT, MMT/USDT, SLP/USDT, 4/USDT, ZEC/USDT, VVV/USDT, 1000PEPE/USDT, SAGA/USDT
+2026-11-15 22:04:55 INFO gex: BTC saved, ETH saved
+2026-11-15 22:05:05 INFO session_flow: recorded 11/11 symbols
+2026-11-15 22:05:11 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 22:09:27 INFO session_flow: recorded 11/11 symbols
+2026-11-15 22:09:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 22:14:30 INFO session_flow: recorded 11/11 symbols
+2026-11-15 22:14:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 22:19:30 INFO session_flow: recorded 11/11 symbols
+2026-11-15 22:19:33 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 22:24:29 INFO session_flow: recorded 11/11 symbols
+2026-11-15 22:24:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 22:29:27 INFO session_flow: recorded 11/11 symbols
+2026-11-15 22:29:30 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 22:34:29 INFO session_flow: recorded 11/11 symbols
+2026-11-15 22:34:36 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-15 22:39:27 INFO session_flow: recorded 11/11 symbols
+2026-11-15 22:39:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 22:44:29 INFO session_flow: recorded 11/11 symbols
+2026-11-15 22:44:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 22:49:28 INFO session_flow: recorded 11/11 symbols
+2026-11-15 22:49:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 22:54:29 INFO session_flow: recorded 11/11 symbols
+2026-11-15 22:54:35 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 22:59:27 INFO session_flow: recorded 11/11 symbols
+2026-11-15 22:59:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 23:04:52 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 52 -> Regime Mean-Reverting: 45 -> $ Risk = $10.00: 38 -> Leverage < 0.40x: 13
+2026-11-15 23:04:52 INFO watchlist: saved 13 match(es) for 2026-11-15: PUMP/USDT, PARTI/USDT, FARTCOIN/USDT, AT/USDT, PENGU/USDT, ZRO/USDT, MMT/USDT, SAHARA/USDT, SLP/USDT, VVV/USDT, 4/USDT, ZEC/USDT, SKL/USDT
+2026-11-15 23:04:54 INFO gex: BTC saved, ETH saved
+2026-11-15 23:05:02 INFO session_flow: recorded 11/11 symbols
+2026-11-15 23:05:11 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 23:09:28 INFO session_flow: recorded 11/11 symbols
+2026-11-15 23:09:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 23:14:28 INFO session_flow: recorded 11/11 symbols
+2026-11-15 23:14:35 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 23:19:28 INFO session_flow: recorded 11/11 symbols
+2026-11-15 23:19:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 23:24:29 INFO session_flow: recorded 11/11 symbols
+2026-11-15 23:24:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 23:29:28 INFO session_flow: recorded 11/11 symbols
+2026-11-15 23:29:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 23:34:28 INFO session_flow: recorded 11/11 symbols
+2026-11-15 23:34:34 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 23:39:27 INFO session_flow: recorded 11/11 symbols
+2026-11-15 23:39:30 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 23:44:28 INFO session_flow: recorded 11/11 symbols
+2026-11-15 23:44:35 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 23:49:20 INFO session_flow: recorded 1/1 symbols
+2026-11-15 23:49:24 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-15 23:54:21 INFO session_flow: recorded 1/1 symbols
+2026-11-15 23:54:30 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-15 23:59:28 INFO session_flow: recorded 11/11 symbols
+2026-11-15 23:59:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 00:04:52 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 45 -> Regime Mean-Reverting: 41 -> $ Risk = $10.00: 34 -> Leverage < 0.40x: 14
+2026-11-16 00:04:52 INFO watchlist: saved 14 match(es) for 2026-11-16: AT/USDT, PUMP/USDT, FARTCOIN/USDT, PENGU/USDT, ZRO/USDT, MMT/USDT, BLESS/USDT, SAHARA/USDT, SLP/USDT, VVV/USDT, 4/USDT, ZEC/USDT, SKL/USDT, 1000PEPE/USDT
+2026-11-16 00:04:54 INFO gex: BTC saved, ETH saved
+2026-11-16 00:05:03 INFO session_flow: recorded 11/11 symbols
+2026-11-16 00:05:09 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-16 00:09:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 00:09:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 00:14:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 00:14:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 00:19:31 INFO session_flow: recorded 11/11 symbols
+2026-11-16 00:19:38 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 00:24:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 00:24:34 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 00:29:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 00:29:34 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-16 00:34:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 00:34:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 00:39:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 00:39:33 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 00:44:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 00:44:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 00:49:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 00:49:45 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 00:54:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 00:54:32 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-16 00:59:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 00:59:35 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-16 01:04:51 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 38 -> Regime Mean-Reverting: 33 -> $ Risk = $10.00: 26 -> Leverage < 0.40x: 12
+2026-11-16 01:04:51 INFO watchlist: saved 12 match(es) for 2026-11-16: AT/USDT, 龙虾/USDT, PUMP/USDT, ASTER/USDT, TAC/USDT, PENGU/USDT, ZRO/USDT, SLP/USDT, 4/USDT, ETHFI/USDT, 1000PEPE/USDT, SAGA/USDT
+2026-11-16 01:04:53 INFO gex: BTC saved, ETH saved
+2026-11-16 01:05:03 INFO session_flow: recorded 11/11 symbols
+2026-11-16 01:05:09 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 01:09:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 01:09:30 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 01:14:32 INFO session_flow: recorded 11/11 symbols
+2026-11-16 01:14:38 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 01:19:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 01:19:31 INFO zone_flow_tracker: 2 new signal(s)
+2026-11-16 01:24:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 01:24:35 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 01:29:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 01:29:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 01:34:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 01:34:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 01:39:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 01:39:32 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-16 01:44:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 01:44:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 01:49:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 01:49:32 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-16 01:54:31 INFO session_flow: recorded 11/11 symbols
+2026-11-16 01:54:39 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 01:59:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 01:59:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 02:04:52 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 32 -> Regime Mean-Reverting: 27 -> $ Risk = $10.00: 22 -> Leverage < 0.40x: 10
+2026-11-16 02:04:52 INFO watchlist: saved 10 match(es) for 2026-11-16: AT/USDT, 龙虾/USDT, ALLO/USDT, RESOLV/USDT, ZRO/USDT, TAC/USDT, SAGA/USDT, VVV/USDT, 1000PEPE/USDT, ETHFI/USDT
+2026-11-16 02:04:53 INFO gex: BTC saved, ETH saved
+2026-11-16 02:05:04 INFO session_flow: recorded 11/11 symbols
+2026-11-16 02:05:10 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-16 02:09:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 02:09:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 02:14:30 INFO session_flow: recorded 11/11 symbols
+2026-11-16 02:14:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 02:19:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 02:19:30 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 02:24:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 02:24:35 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 02:29:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 02:29:30 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 02:34:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 02:34:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 02:39:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 02:39:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 02:44:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 02:44:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 02:49:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 02:49:34 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 02:54:30 INFO session_flow: recorded 11/11 symbols
+2026-11-16 02:54:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 02:59:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 02:59:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 03:04:52 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 28 -> Regime Mean-Reverting: 24 -> $ Risk = $10.00: 22 -> Leverage < 0.40x: 10
+2026-11-16 03:04:52 INFO watchlist: saved 10 match(es) for 2026-11-16: AT/USDT, 龙虾/USDT, RESOLV/USDT, ALLO/USDT, PENGU/USDT, ZRO/USDT, TAC/USDT, SAGA/USDT, SKL/USDT, 1000PEPE/USDT
+2026-11-16 03:04:54 INFO gex: BTC saved, ETH saved
+2026-11-16 03:05:05 INFO session_flow: recorded 11/11 symbols
+2026-11-16 03:05:11 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 03:09:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 03:09:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 03:14:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 03:14:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 03:19:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 03:19:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 03:24:30 INFO session_flow: recorded 11/11 symbols
+2026-11-16 03:24:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 03:29:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 03:29:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 03:34:30 INFO session_flow: recorded 11/11 symbols
+2026-11-16 03:34:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 03:39:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 03:39:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 03:44:30 INFO session_flow: recorded 11/11 symbols
+2026-11-16 03:44:36 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-16 03:49:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 03:49:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 03:54:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 03:54:35 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 03:59:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 03:59:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 04:04:52 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 33 -> Regime Mean-Reverting: 26 -> $ Risk = $10.00: 22 -> Leverage < 0.40x: 9
+2026-11-16 04:04:52 INFO watchlist: saved 9 match(es) for 2026-11-16: 龙虾/USDT, AT/USDT, RESOLV/USDT, 牛来/USDT, BLESS/USDT, TAC/USDT, VVV/USDT, SKL/USDT, SPACE/USDT
+2026-11-16 04:04:53 INFO gex: BTC saved, ETH saved
+2026-11-16 04:05:02 INFO session_flow: recorded 11/11 symbols
+2026-11-16 04:05:08 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 04:09:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 04:09:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 04:14:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 04:14:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 04:19:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 04:19:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 04:24:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 04:24:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 04:29:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 04:29:37 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-16 04:34:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 04:34:33 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 04:39:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 04:39:35 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 04:44:30 INFO session_flow: recorded 11/11 symbols
+2026-11-16 04:44:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 04:49:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 04:49:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 04:54:30 INFO session_flow: recorded 11/11 symbols
+2026-11-16 04:54:38 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 04:59:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 04:59:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 05:04:52 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 37 -> Regime Mean-Reverting: 28 -> $ Risk = $10.00: 24 -> Leverage < 0.40x: 12
+2026-11-16 05:04:52 INFO watchlist: saved 12 match(es) for 2026-11-16: 龙虾/USDT, ALLO/USDT, AT/USDT, PUMP/USDT, RESOLV/USDT, MMT/USDT, BLESS/USDT, TAC/USDT, 4/USDT, ZEC/USDT, SKL/USDT, SPACE/USDT
+2026-11-16 05:04:54 INFO gex: BTC saved, ETH saved
+2026-11-16 05:05:03 INFO session_flow: recorded 11/11 symbols
+2026-11-16 05:05:09 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 05:09:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 05:09:33 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 05:14:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 05:14:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 05:19:31 INFO session_flow: recorded 11/11 symbols
+2026-11-16 05:19:38 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-16 05:24:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 05:24:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 05:29:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 05:29:35 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 05:34:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 05:34:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 05:39:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 05:39:33 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 05:44:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 05:44:35 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 05:49:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 05:49:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 05:54:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 05:54:35 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 05:59:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 05:59:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 06:04:53 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 32 -> Regime Mean-Reverting: 28 -> $ Risk = $10.00: 22 -> Leverage < 0.40x: 10
+2026-11-16 06:04:53 INFO watchlist: saved 10 match(es) for 2026-11-16: AT/USDT, ALLO/USDT, PUMP/USDT, RESOLV/USDT, TAC/USDT, FIDA/USDT, BLESS/USDT, 4/USDT, SKL/USDT, SAGA/USDT
+2026-11-16 06:04:54 INFO gex: BTC saved, ETH saved
+2026-11-16 06:05:03 INFO session_flow: recorded 11/11 symbols
+2026-11-16 06:05:10 INFO zone_flow_tracker: 1 new signal(s)
+2026-11-16 06:09:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 06:09:33 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 06:14:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 06:14:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 06:19:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 06:19:33 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 06:24:30 INFO session_flow: recorded 11/11 symbols
+2026-11-16 06:24:38 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 06:29:26 INFO session_flow: recorded 11/11 symbols
+2026-11-16 06:29:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 06:34:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 06:34:34 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 06:39:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 06:39:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 06:44:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 06:44:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 06:49:27 INFO session_flow: recorded 11/11 symbols
+2026-11-16 06:49:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 06:54:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 06:54:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 06:59:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 06:59:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 07:04:53 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 36 -> Regime Mean-Reverting: 28 -> $ Risk = $10.00: 23 -> Leverage < 0.40x: 8
+2026-11-16 07:04:53 INFO watchlist: saved 8 match(es) for 2026-11-16: 龙虾/USDT, ALLO/USDT, PUMP/USDT, RESOLV/USDT, BLESS/USDT, SKL/USDT, 1000PEPE/USDT, SPACE/USDT
+2026-11-16 07:04:55 INFO gex: BTC exists, ETH saved
+2026-11-16 07:05:05 INFO session_flow: recorded 11/11 symbols
+2026-11-16 07:05:11 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 07:09:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 07:09:33 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 07:14:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 07:14:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 07:19:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 07:19:35 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 07:24:34 INFO session_flow: recorded 11/11 symbols
+2026-11-16 07:24:47 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 07:29:33 INFO session_flow: recorded 11/11 symbols
+2026-11-16 07:29:41 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 07:34:35 INFO session_flow: recorded 11/11 symbols
+2026-11-16 07:34:47 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 07:39:32 INFO session_flow: recorded 11/11 symbols
+2026-11-16 07:39:40 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 07:44:44 INFO session_flow: recorded 11/11 symbols
+2026-11-16 07:44:56 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 07:49:40 INFO session_flow: recorded 11/11 symbols
+2026-11-16 07:49:49 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 07:54:34 INFO session_flow: recorded 11/11 symbols
+2026-11-16 07:54:45 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 07:59:32 INFO session_flow: recorded 11/11 symbols
+2026-11-16 07:59:39 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 08:05:07 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 38 -> Regime Mean-Reverting: 32 -> $ Risk = $10.00: 25 -> Leverage < 0.40x: 10
+2026-11-16 08:05:07 INFO watchlist: saved 10 match(es) for 2026-11-16: PUMP/USDT, 龙虾/USDT, ALLO/USDT, FARTCOIN/USDT, RESOLV/USDT, 牛来/USDT, BLESS/USDT, 4/USDT, SKL/USDT, 1000PEPE/USDT
+2026-11-16 08:05:10 INFO gex: BTC saved, ETH saved
+2026-11-16 08:05:21 INFO session_flow: recorded 11/11 symbols
+2026-11-16 08:05:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 08:09:30 INFO session_flow: recorded 11/11 symbols
+2026-11-16 08:09:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 08:14:32 INFO session_flow: recorded 11/11 symbols
+2026-11-16 08:14:43 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 08:19:32 INFO session_flow: recorded 11/11 symbols
+2026-11-16 08:19:38 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 08:24:59 INFO session_flow: recorded 11/11 symbols
+2026-11-16 08:25:12 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 08:30:17 INFO session_flow: recorded 11/11 symbols
+2026-11-16 08:30:31 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 08:34:30 INFO session_flow: recorded 11/11 symbols
+2026-11-16 08:34:38 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 08:39:43 INFO session_flow: recorded 11/11 symbols
+2026-11-16 08:39:58 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 08:44:34 INFO session_flow: recorded 11/11 symbols
+2026-11-16 08:44:43 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 08:49:36 INFO session_flow: recorded 11/11 symbols
+2026-11-16 08:49:51 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 08:54:33 INFO session_flow: recorded 11/11 symbols
+2026-11-16 08:54:42 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 08:59:37 ERROR session_flow: check failed
+OSError: [Errno 28] No space left on device
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Frank\quant pro wth pre market\alert_runner.py", line 325, in run_cycle
+    save_session_flow(group, dash, dry_run)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\quant pro wth pre market\alert_runner.py", line 285, in save_session_flow
+    results = session_flow_recorder.record_sessions(
+        symbols, session_fetcher(dash.fetch_and_analyze, group['timeframe']), group['timeframe'])
+  File "C:\Users\Frank\quant pro wth pre market\session_flow_recorder.py", line 191, in record_sessions
+    upsert(rows, path)
+    ~~~~~~^^^^^^^^^^^^
+  File "C:\Users\Frank\quant pro wth pre market\session_flow_recorder.py", line 169, in upsert
+    new.to_csv(tmp, index=False)
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\pandas\util\_decorators.py", line 333, in wrapper
+    return func(*args, **kwargs)
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\pandas\core\generic.py", line 3989, in to_csv
+    return DataFrameRenderer(formatter).to_csv(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        path_or_buf,
+        ^^^^^^^^^^^^
+    ...<14 lines>...
+        storage_options=storage_options,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\pandas\io\formats\format.py", line 1014, in to_csv
+    csv_formatter.save()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\pandas\io\formats\csvs.py", line 251, in save
+    with get_handle(
+         ~~~~~~~~~~^
+        self.filepath_or_buffer,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        storage_options=self.storage_options,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as handles:
+    ^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\pandas\io\common.py", line 157, in __exit__
+    self.close()
+    ~~~~~~~~~~^^
+  File "C:\Users\Frank\AppData\Local\Programs\Python\Python314\Lib\site-packages\pandas\io\common.py", line 144, in close
+    handle.close()
+    ~~~~~~~~~~~~^^
+OSError: [Errno 28] No space left on device
+2026-11-16 08:59:49 INFO zone_flow_tracker: 0 new signal(s); problems: {'BTC/USDT 5m': 'failed: [Errno 28] No space left on device', 'BTC/USDT 15m': 'failed: [Errno 28] No space left on device', 'BTC/USDT 1h': 'failed: [Errno 28] No space left on device', 'BTC/USDT 4h': 'failed: [Errno 28] No space left on device', 'BTC/USDT 1d': 'failed: [Errno 28] No space left on device', 'BTC/USD 5m': 'failed: [Errno 28] No space left on device', 'BTC/USD 15m': 'failed: [Errno 28] No space left on device', 'BTC/USD 1h': 'failed: [Errno 28] No space left on device', 'BTC/USD 4h': 'failed: [Errno 28] No space left on device', 'BTC/USD 1d': 'failed: [Errno 28] No space left on device'}
+2026-11-16 09:04:54 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 53 -> Regime Mean-Reverting: 46 -> $ Risk = $10.00: 37 -> Leverage < 0.40x: 13
+2026-11-16 09:04:55 INFO watchlist: saved 13 match(es) for 2026-11-16: PUMP/USDT, PARTI/USDT, ALLO/USDT, FARTCOIN/USDT, 牛来/USDT, TAC/USDT, ZEC/USDT, 4/USDT, BLESS/USDT, VVV/USDT, SKL/USDT, 1000PEPE/USDT, JUP/USDT
+2026-11-16 09:04:56 INFO gex: BTC exists, ETH saved
+2026-11-16 09:05:09 INFO session_flow: recorded 11/11 symbols
+2026-11-16 09:05:18 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 09:09:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 09:09:33 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 09:14:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 09:14:38 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 09:19:31 INFO session_flow: recorded 11/11 symbols
+2026-11-16 09:19:35 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 09:24:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 09:24:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 09:29:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 09:29:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 09:34:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 09:34:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 09:39:28 INFO session_flow: recorded 11/11 symbols
+2026-11-16 09:39:33 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 09:45:10 INFO session_flow: recorded 11/11 symbols
+2026-11-16 09:46:14 INFO zone_flow_tracker: 0 new signal(s); problems: {'BTC/USDT 4h': 'not enough candles'}
+2026-11-16 09:49:31 INFO session_flow: recorded 1/1 symbols
+2026-11-16 09:50:01 INFO zone_flow_tracker: 0 new signal(s); problems: {'BTC/USDT 5m': 'not enough candles'}
+2026-11-16 09:55:16 INFO session_flow: recorded 10/11 symbols; problems: {'DOGE/USDT': 'no candles in session'}
+2026-11-16 09:55:56 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 09:59:32 INFO session_flow: recorded 1/1 symbols
+2026-11-16 09:59:54 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 10:05:01 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 51 -> Regime Mean-Reverting: 45 -> $ Risk = $10.00: 38 -> Leverage < 0.40x: 10
+2026-11-16 10:05:01 INFO watchlist: saved 10 match(es) for 2026-11-16: PUMP/USDT, ALLO/USDT, ZRO/USDT, 牛来/USDT, TAC/USDT, ZEC/USDT, BLESS/USDT, JUP/USDT, 1000PEPE/USDT, CAP/USDT
+2026-11-16 10:05:03 INFO gex: BTC saved, ETH saved
+2026-11-16 10:06:27 INFO session_flow: recorded 9/11 symbols; problems: {'ETH/USDT': 'no candles in session', 'SOL/USDT': 'no candles in session'}
+2026-11-16 10:07:19 INFO zone_flow_tracker: 0 new signal(s); problems: {'BTC/USDT 15m': 'not enough candles'}
+2026-11-16 10:09:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 10:09:34 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 10:14:53 INFO session_flow: recorded 11/11 symbols
+2026-11-16 10:15:03 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 10:19:34 INFO session_flow: recorded 11/11 symbols
+2026-11-16 10:19:41 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 10:24:39 INFO session_flow: recorded 11/11 symbols
+2026-11-16 10:24:52 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 10:29:30 INFO session_flow: recorded 11/11 symbols
+2026-11-16 10:29:34 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 10:34:40 INFO session_flow: recorded 11/11 symbols
+2026-11-16 10:34:59 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 10:39:38 INFO session_flow: recorded 11/11 symbols
+2026-11-16 10:39:44 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 10:44:37 INFO session_flow: recorded 11/11 symbols
+2026-11-16 10:44:52 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 10:49:42 INFO session_flow: recorded 11/11 symbols
+2026-11-16 10:49:54 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 10:54:38 INFO session_flow: recorded 11/11 symbols
+2026-11-16 10:54:44 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 10:59:34 INFO session_flow: recorded 11/11 symbols
+2026-11-16 10:59:45 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 11:05:04 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 36 -> Regime Mean-Reverting: 30 -> $ Risk = $10.00: 26 -> Leverage < 0.40x: 9
+2026-11-16 11:05:04 INFO watchlist: saved 9 match(es) for 2026-11-16: ALLO/USDT, ZRO/USDT, AT/USDT, 牛来/USDT, XMR/USDT, TAC/USDT, BLESS/USDT, 1000PEPE/USDT, JUP/USDT
+2026-11-16 11:05:08 INFO gex: BTC saved, ETH saved
+2026-11-16 11:05:22 INFO session_flow: recorded 11/11 symbols
+2026-11-16 11:05:32 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 11:09:29 INFO session_flow: recorded 11/11 symbols
+2026-11-16 11:09:34 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 11:14:35 INFO session_flow: recorded 11/11 symbols
+2026-11-16 11:14:46 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 11:19:44 INFO session_flow: recorded 11/11 symbols
+2026-11-16 11:20:00 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 11:24:32 INFO session_flow: recorded 11/11 symbols
+2026-11-16 11:24:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 11:29:37 INFO session_flow: recorded 11/11 symbols
+2026-11-16 11:29:50 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 11:34:31 INFO session_flow: recorded 11/11 symbols
+2026-11-16 11:34:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 11:39:36 INFO session_flow: recorded 11/11 symbols
+2026-11-16 11:39:48 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 11:44:32 INFO session_flow: recorded 11/11 symbols
+2026-11-16 11:44:36 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 11:49:36 INFO session_flow: recorded 11/11 symbols
+2026-11-16 11:49:51 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 11:54:38 INFO session_flow: recorded 11/11 symbols
+2026-11-16 11:54:45 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 11:59:39 INFO session_flow: recorded 11/11 symbols
+2026-11-16 11:59:58 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 12:05:32 INFO watchlist: 200/200 scanned; Verdict LONG / SHORT: 55 -> Regime Mean-Reverting: 47 -> $ Risk = $10.00: 40 -> Leverage < 0.40x: 10
+2026-11-16 12:05:32 INFO watchlist: saved 10 match(es) for 2026-11-16: ALLO/USDT, PUMP/USDT, XMR/USDT, TAC/USDT, ZEC/USDT, VVV/USDT, 牛来/USDT, BLESS/USDT, 1000PEPE/USDT, CAP/USDT
+2026-11-16 12:05:37 INFO gex: BTC saved, ETH saved
+2026-11-16 12:05:53 INFO session_flow: recorded 11/11 symbols
+2026-11-16 12:06:06 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 12:09:33 INFO session_flow: recorded 11/11 symbols
+2026-11-16 12:09:39 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 12:14:37 INFO session_flow: recorded 11/11 symbols
+2026-11-16 12:14:52 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 12:19:36 INFO session_flow: recorded 11/11 symbols
+2026-11-16 12:19:47 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 12:24:43 INFO session_flow: recorded 11/11 symbols
+2026-11-16 12:24:58 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 12:29:33 INFO session_flow: recorded 11/11 symbols
+2026-11-16 12:29:41 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 12:34:50 INFO session_flow: recorded 11/11 symbols
+2026-11-16 12:35:27 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 12:39:38 INFO session_flow: recorded 11/11 symbols
+2026-11-16 12:39:49 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 12:44:40 INFO session_flow: recorded 11/11 symbols
+2026-11-16 12:44:59 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 12:49:31 INFO session_flow: recorded 11/11 symbols
+2026-11-16 12:49:37 INFO zone_flow_tracker: 0 new signal(s)
+2026-11-16 12:54:43 INFO session_flow: recorded 11/11 symbols
+2026-11-16 12:55:07 INFO zone_flow_tracker: 0 new signal(s)

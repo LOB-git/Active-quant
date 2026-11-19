@@ -1,9 +1,12 @@
-streamlit
-yfinance
-pandas
-numpy
-matplotlib
-plotly
-ccxt
-requests
-scipy
+# Versions the dashboard is tested with (Python 3.14 on the main PC). Exact pins, except numpy and scipy:
+# numpy 2.3 and scipy 1.17 need Python 3.11+, so a ranged pin lets a host on Python 3.10 install
+# numpy 2.2 / scipy 1.15 instead of failing with "Error running app".
+streamlit==1.62.0
+yfinance==1.2.0
+pandas==2.3.3
+numpy>=1.26,<2.4
+matplotlib==3.10.8
+plotly==6.8.0
+ccxt==4.5.78
+requests==2.32.5
+scipy>=1.11,<1.18

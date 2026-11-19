@@ -1,0 +1,73 @@
+{
+  "interval_seconds": 300,
+  "groups": {
+    "us_indices": {
+      "enabled": true,
+      "timeframe": "1h",
+      "z_threshold": 1.0,
+      "symbols": [
+        "SPY",
+        "QQQ",
+        "NQ=F",
+        "DIA",
+        "YM=F",
+        "^VIX",
+        "DX-Y.NYB"
+      ]
+    },
+    "derivatives": {
+      "enabled": true,
+      "timeframe": "1h",
+      "z_threshold": 1.0,
+      "symbols": null
+    },
+    "watchlist": {
+      "enabled": true,
+      "every_seconds": 3600,
+      "timeframe": "1h",
+      "scan_size": 200,
+      "risk_usd": 10.0,
+      "max_leverage": 0.4,
+      "equity": 1000.0,
+      "risk_pct": 1.0,
+      "atr_multiple": 1.5,
+      "reward_risk": 2.0,
+      "threshold": 0.25,
+      "max_hold": 48,
+      "fee_bps": 10.0
+    },
+    "gex": {
+      "enabled": true,
+      "every_seconds": 3600,
+      "currencies": [
+        "BTC",
+        "ETH"
+      ]
+    },
+    "session_flow": {
+      "enabled": true,
+      "every_seconds": 300,
+      "timeframe": "5m",
+      "symbols": [
+        "BTC/USD"
+      ],
+      "top_perpetuals": 10
+    },
+    "zone_flow_tracker": {
+      "enabled": true,
+      "every_seconds": 300,
+      "symbols": [
+        "BTC/USDT",
+        "BTC/USD",
+        "BTC/USDT (real flow)"
+      ],
+      "timeframes": [
+        "5m",
+        "15m",
+        "1h",
+        "4h",
+        "1d"
+      ]
+    }
+  }
+}

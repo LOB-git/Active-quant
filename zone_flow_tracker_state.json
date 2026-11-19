@@ -1,0 +1,62 @@
+{
+  "BTC/USDT|5m": {
+    "started": "2026-11-14 18:32",
+    "last_update": "2026-11-16 12:54",
+    "last_price": 64148.8,
+    "signals": 27
+  },
+  "BTC/USDT|15m": {
+    "started": "2026-11-14 18:32",
+    "last_update": "2026-11-16 12:54",
+    "last_price": 64094.3,
+    "signals": 10
+  },
+  "BTC/USDT|1h": {
+    "started": "2026-11-14 18:32",
+    "last_update": "2026-11-16 12:54",
+    "last_price": 64090.0,
+    "signals": 2
+  },
+  "BTC/USDT|4h": {
+    "started": "2026-11-14 18:32",
+    "last_update": "2026-11-16 12:54",
+    "last_price": 64086.1,
+    "signals": 2
+  },
+  "BTC/USDT|1d": {
+    "started": "2026-11-14 18:32",
+    "last_update": "2026-11-16 12:54",
+    "last_price": 64086.1,
+    "signals": 0
+  },
+  "BTC/USD|5m": {
+    "started": "2026-11-14 18:32",
+    "last_update": "2026-11-19 15:54",
+    "last_price": 63036.71875,
+    "signals": 5
+  },
+  "BTC/USD|15m": {
+    "started": "2026-11-14 18:32",
+    "last_update": "2026-11-19 15:54",
+    "last_price": 62823.9609375,
+    "signals": 3
+  },
+  "BTC/USD|1h": {
+    "started": "2026-11-14 18:32",
+    "last_update": "2026-11-19 15:54",
+    "last_price": 64047.01171875,
+    "signals": 0
+  },
+  "BTC/USD|4h": {
+    "started": "2026-11-14 18:32",
+    "last_update": "2026-11-19 15:54",
+    "last_price": 64047.01171875,
+    "signals": 0
+  },
+  "BTC/USD|1d": {
+    "started": "2026-11-14 18:32",
+    "last_update": "2026-11-19 15:54",
+    "last_price": 64035.37890625,
+    "signals": 0
+  }
+}
